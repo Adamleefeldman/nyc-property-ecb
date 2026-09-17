@@ -1,0 +1,159 @@
+# NYC Property Resolver + ECB Violations
+
+Turns an NYC address or BBL into the city's official property IDs, keeps a
+local copy of that property's DOB ECB violations refreshed on a schedule, and
+serves them through our own API. Socrata is never called while answering a
+request.
+
+## Run it
+
+Needs Docker. Nothing else.
+
+```sh
+cp .env.example .env        # optional: add a Socrata app token
+docker compose up
+```
+
+Starts Postgres, the API on http://localhost:3000, and the scheduler.
+Migrations run on start. To load the sample addresses and run the pipeline once:
+
+```sh
+docker compose run api npm run seed
+docker compose run api npm run ingest
+```
+
+## Change the schedule
+
+The pipeline interval is an environment variable. Default is once a day.
+
+```
+INGEST_INTERVAL=24h     # e.g. 6h, 30m
+```
+
+Change it in `.env` and restart. No code changes.
+
+## Run the pipeline now
+
+Either:
+
+```sh
+docker compose run api npm run ingest
+```
+
+or `POST /admin/ingest/run`. Both return the run's summary: wall time,
+Socrata calls made, rows stored, batches failed.
+
+## Endpoints
+
+### Resolve a property
+
+`POST /properties` with `{ "address": "..." }` or `{ "bbl": "..." }`.
+Same input twice returns the same record; it never creates a duplicate.
+
+```json
+POST /properties
+{ "address": "350 5th Avenue, Manhattan" }
+
+201
+{
+  "id": "…",
+  "bbl": "1008350041",
+  "borough": 1, "block": "00835", "lot": "0041",
+  "normalizedAddress": "350 5 AVENUE, MANHATTAN",
+  "bins": ["1015862"],
+  "resolution": { "status": "resolved", "source": "geosearch", "at": "2026-09-17T14:02:11Z" }
+}
+```
+
+### Get a property
+
+`GET /properties/:id` — the stored record, as above.
+
+### Get a property's ECB violations
+
+`GET /properties/:id/ecb-violations?open=true&unpaid=true&limit=50&cursor=…`
+
+Served from our database only. Newest first. `open=true` keeps rows with
+`ecb_violation_status = ACTIVE`; `unpaid=true` keeps rows with `balance_due > 0`.
+
+Every response says how fresh the data is and whether we actually checked:
+
+```json
+{
+  "coverage": {
+    "state": "checked",
+    "checkedAt": "2026-09-17T03:00:04Z",
+    "sourceUpdatedAt": "2026-09-16T17:00:00Z",
+    "runId": 42
+  },
+  "items": [ { "ecbViolationNumber": "…", "issueDate": "2024-03-01", "status": "ACTIVE", "balanceDue": 1250.00, "…": "…" } ],
+  "nextCursor": "…"
+}
+```
+
+`coverage.state` is one of:
+
+| state          | meaning                                                             |
+|----------------|---------------------------------------------------------------------|
+| `checked`      | We looked. `items` is the answer, even if it is empty.              |
+| `not_checked`  | Property is registered but the pipeline has not reached it yet.     |
+| `failed`       | Last attempt errored. `failedAt` and `error` say when and why.      |
+| `not_applicable` | Property has no usable building ID, so there is nothing to check. `reason` says why. |
+
+An empty `items` with `state: checked` means "no violations". An empty
+`items` with any other state means "we don't know yet".
+
+### Add properties in bulk
+
+`POST /properties/bulk` with `{ "bbls": ["1008350041", "…"] }` (up to 10,000).
+Returns counts of created / existing / failed. Also: `npm run import -- file.csv`.
+
+### List across properties
+
+`GET /ecb-violations?updatedSince=2026-09-10T00:00:00Z&limit=500&cursor=…`
+— every violation we stored or changed since a time, across all properties,
+so a scanner can read everything in a few calls instead of one per property.
+
+`GET /properties?unpaid=true` — properties with any `balance_due > 0`.
+
+## Where the IDs come from
+
+| Step                    | Source                         | Why                                                                                                                                                                       |
+|-------------------------|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| address → BBL + BIN     | NYC GeoSearch                  | The only free service that reads addresses. Its confidence score is always 0.8, so we check ourselves that the house number, street and borough match what was asked.     |
+| BBL → lot details       | PLUTO (64uk-42ks)              | One row per lot: borough, block, lot, building class, units. Also the source of the 10,000-lot scale seed.                                                                |
+| BBL → all BINs          | Building Footprints (5zhs-2jue)| The only source that lists every building on a lot. We query both `base_bbl` and `mappluto_bbl`, because for condos `base_bbl` is the ground lot and only `mappluto_bbl` carries the condo billing lot. |
+
+Violations are joined by BIN, never by block/lot, because block/lot padding
+is inconsistent in the ECB data (the same lot appears as `0041` and `00041`).
+
+## Known limitations
+
+**Condo given as a unit BBL.** Condo apartments have their own paper lot
+numbers (1001–6999). Violations are recorded against the *building*, whose
+lot is 7501 or higher. If you send us a unit BBL with no address, none of the
+three sources can get from the apartment to the building. We store the
+property with `resolution.status: "unresolved"` and the reason
+`"condo unit lot; send the building address or the billing-lot BBL (7501+)"`.
+Sending the address instead works: GeoSearch resolves unit addresses to the
+building.
+
+**GeoSearch outages.** It is a free city service and does go down (it
+returned 503 all day on 2026-09-16). An address that cannot be geocoded is
+stored as `resolution.status: "pending"` with the error and retried on the
+next run. BBL input does not depend on GeoSearch.
+
+**Rows without a BIN.** About 4,600 ECB rows have no BIN. They cannot be
+attached to any property and are not served.
+
+## Spot checks against BIS
+
+| Property                | Our count | BIS Property Profile | Match |
+|-------------------------|-----------|----------------------|-------|
+| 350 5th Avenue (ESB)    | _TBD_     | _TBD_                | _TBD_ |
+| _second property_       | _TBD_     | _TBD_                | _TBD_ |
+
+## Secrets
+
+`SOCRATA_APP_TOKEN` in `.env` (see `.env.example`). Optional; lifts the
+unauthenticated rate limit. Never committed.

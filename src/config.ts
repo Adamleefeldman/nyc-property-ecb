@@ -1,0 +1,49 @@
+// All runtime settings come from the environment. Every value has a default so
+// `docker compose up` works on a clean machine; invalid values fail at startup.
+
+const INTERVAL_UNITS: Record<string, number> = {
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+};
+
+/** Parse "30m" | "6h" | "24h" | "1d" into milliseconds. Throws on anything else. */
+export function parseInterval(raw: string): number {
+  const match = /^(\d+)([mhd])$/.exec(raw.trim());
+  if (!match) {
+    throw new Error(`INGEST_INTERVAL must look like 30m, 6h or 1d (got "${raw}")`);
+  }
+  const amount = Number(match[1]);
+  const unit = INTERVAL_UNITS[match[2]!]!;
+  if (amount <= 0) throw new Error(`INGEST_INTERVAL must be positive (got "${raw}")`);
+  return amount * unit;
+}
+
+function parsePort(raw: string): number {
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`PORT must be an integer between 1 and 65535 (got "${raw}")`);
+  }
+  return port;
+}
+
+export interface Config {
+  databaseUrl: string;
+  port: number;
+  socrataAppToken: string | undefined;
+  ingestInterval: string;
+  ingestIntervalMs: number;
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const ingestInterval = env.INGEST_INTERVAL ?? '24h';
+  return {
+    databaseUrl: env.DATABASE_URL ?? 'postgres://app:app@localhost:5432/app',
+    port: parsePort(env.PORT ?? '3000'),
+    socrataAppToken: env.SOCRATA_APP_TOKEN || undefined,
+    ingestInterval,
+    ingestIntervalMs: parseInterval(ingestInterval),
+  };
+}
+
+export const config: Config = loadConfig();
