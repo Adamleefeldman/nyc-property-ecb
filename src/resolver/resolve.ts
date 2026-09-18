@@ -70,9 +70,12 @@ export async function registerByAddress(db: pg.Pool, deps: ResolverDeps, rawInpu
   const address = normalizeAddress(rawInput); // throws InvalidAddressError → 400
   const input: InputRef = { kind: 'address', inputKey: address.inputKey, rawInput, unit: address.unit };
 
-  // Seen this exact address before? Then no geocoding, unless it is still pending.
+  // Seen this exact address before? A settled record (resolved / not_applicable)
+  // is served from the cache with no geocoding. pending and unresolved are
+  // retried: the source may have been down, PAD may have gained the address,
+  // or our normaliser may have improved since.
   const known = await findByInput(db, 'address', address.inputKey);
-  if (known && known.resolution.status !== 'pending') {
+  if (known && known.bbl !== null && known.resolution.status !== 'pending') {
     return settleBins(db, deps.socrata, known, 200);
   }
   const pendingId = known?.id ?? null;

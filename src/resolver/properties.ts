@@ -257,13 +257,19 @@ export async function markPending(db: pg.Pool, id: string, error: string): Promi
   return (await getProperty(db, id))!;
 }
 
-/** Every pending property with the input that created it, for the retry command. */
-export async function listPending(db: Queryable): Promise<Array<{ id: string; kind: InputKind; rawInput: string }>> {
-  const { rows } = await db.query<{ id: string; kind: InputKind; raw_input: string }>(
-    `SELECT DISTINCT ON (p.id) p.id, i.kind, i.raw_input
+/**
+ * Every property that a retry might settle, with the input that created it:
+ * pending (a source was down) and unresolved (no match at the time). Resolved
+ * and not_applicable are final.
+ */
+export async function listRetryable(
+  db: Queryable,
+): Promise<Array<{ id: string; kind: InputKind; rawInput: string; status: ResolutionStatus }>> {
+  const { rows } = await db.query<{ id: string; kind: InputKind; raw_input: string; resolution_status: ResolutionStatus }>(
+    `SELECT DISTINCT ON (p.id) p.id, i.kind, i.raw_input, p.resolution_status
        FROM properties p JOIN property_inputs i ON i.property_id = p.id
-      WHERE p.resolution_status = 'pending'
+      WHERE p.resolution_status IN ('pending', 'unresolved')
       ORDER BY p.id, i.created_at`,
   );
-  return rows.map((r) => ({ id: r.id, kind: r.kind, rawInput: r.raw_input }));
+  return rows.map((r) => ({ id: r.id, kind: r.kind, rawInput: r.raw_input, status: r.resolution_status }));
 }

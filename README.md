@@ -140,8 +140,19 @@ building.
 
 **GeoSearch outages.** It is a free city service and does go down (it
 returned 503 all day on 2026-09-16). An address that cannot be geocoded is
-stored as `resolution.status: "pending"` with the error and retried on the
-next run. BBL input does not depend on GeoSearch.
+stored as `resolution.status: "pending"` with the error and returns 202. It
+is retried on the next `POST` of the same address or by `npm run
+resolve:retry`, and keeps its id. BBL input does not depend on GeoSearch.
+
+**Addresses with no exact match.** GeoSearch's confidence score is a
+constant 0.8 and it returns a "match" for streets that do not exist, so we
+accept a candidate only when house number, street and borough all match
+what was sent. Anything else is stored as `resolution.status:
+"unresolved"` with the reason (`no exact match …`, `ambiguous borough …`).
+Unresolved is not final: the city's address directory gains addresses and
+our normaliser improves, so the same `POST` or `npm run resolve:retry`
+tries again. Only `resolved` and `not_applicable` are served from the cache
+without a lookup.
 
 **Rows without a BIN.** About 4,600 ECB rows have no BIN. They cannot be
 attached to any property and are not served.

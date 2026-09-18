@@ -43,14 +43,60 @@ const STREET_WORDS: Record<string, string> = {
 
 const UNIT_RE = /\s+(?:APT|APARTMENT|UNIT|SUITE|STE|FL|FLOOR|RM|ROOM|PH|#)\.?\s*#?\s*([A-Z0-9-]+)$/;
 
+// Spelled-out ordinals: "Fifth Avenue", "West Forty-Second Street",
+// "One Hundred Twenty-Fifth Street". A run of number words that ends in an
+// ordinal word becomes the number; anything else is left alone.
+const CARDINAL: Record<string, number> = {
+  ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5, SIX: 6, SEVEN: 7, EIGHT: 8, NINE: 9, TEN: 10,
+  ELEVEN: 11, TWELVE: 12, THIRTEEN: 13, FOURTEEN: 14, FIFTEEN: 15, SIXTEEN: 16, SEVENTEEN: 17,
+  EIGHTEEN: 18, NINETEEN: 19, TWENTY: 20, THIRTY: 30, FORTY: 40, FIFTY: 50, SIXTY: 60,
+  SEVENTY: 70, EIGHTY: 80, NINETY: 90, HUNDRED: 100,
+};
+const ORDINAL: Record<string, number> = {
+  FIRST: 1, SECOND: 2, THIRD: 3, FOURTH: 4, FIFTH: 5, SIXTH: 6, SEVENTH: 7, EIGHTH: 8, NINTH: 9, TENTH: 10,
+  ELEVENTH: 11, TWELFTH: 12, THIRTEENTH: 13, FOURTEENTH: 14, FIFTEENTH: 15, SIXTEENTH: 16, SEVENTEENTH: 17,
+  EIGHTEENTH: 18, NINETEENTH: 19, TWENTIETH: 20, THIRTIETH: 30, FORTIETH: 40, FIFTIETH: 50, SIXTIETH: 60,
+  SEVENTIETH: 70, EIGHTIETH: 80, NINETIETH: 90, HUNDREDTH: 100,
+};
+
+function wordsToNumber(words: string[]): number | null {
+  const last = words[words.length - 1]!;
+  if (!(last in ORDINAL)) return null;
+  let n = 0;
+  for (const w of words) {
+    const v = CARDINAL[w] ?? ORDINAL[w]!;
+    n = v === 100 ? (n || 1) * 100 : n + v;
+  }
+  return n;
+}
+
+function collapseNumberWords(tokens: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < tokens.length; ) {
+    let j = i;
+    while (j < tokens.length && (tokens[j]! in CARDINAL || tokens[j]! in ORDINAL)) j += 1;
+    const n = j > i ? wordsToNumber(tokens.slice(i, j)) : null;
+    if (n !== null) {
+      out.push(String(n));
+      i = j;
+    } else {
+      out.push(tokens[i]!);
+      i += 1;
+    }
+  }
+  return out;
+}
+
 /** Apply to both the user's street and GeoSearch's, so the comparison is symmetric. */
 export function normalizeStreet(raw: string): string {
-  return raw
+  const tokens = raw
     .toUpperCase()
     .replace(/[.,]/g, ' ')
     .replace(/\b(\d+)(?:ST|ND|RD|TH)\b/g, '$1') // 5TH → 5, 82ND → 82
+    .replace(/(?<=[A-Z])-(?=[A-Z])/g, ' ') // FORTY-SECOND → FORTY SECOND (digit hyphens untouched)
     .split(/\s+/)
-    .filter(Boolean)
+    .filter(Boolean);
+  return collapseNumberWords(tokens)
     .map((w) => STREET_WORDS[w] ?? w)
     .join(' ');
 }

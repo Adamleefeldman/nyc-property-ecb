@@ -14,7 +14,7 @@
     "seed": "tsx src/scripts/seed.ts",
     "ingest": "tsx src/scripts/ingest.ts",
     "renormalize": "tsx src/scripts/renormalize.ts",
-    "resolve:pending": "tsx src/scripts/resolve-pending.ts",
+    "resolve:retry": "tsx src/scripts/resolve-retry.ts",
     "import": "tsx src/scripts/import.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test 'src/**/*.test.ts'"

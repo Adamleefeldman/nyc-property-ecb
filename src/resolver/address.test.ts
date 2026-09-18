@@ -10,6 +10,19 @@ describe('normalizeStreet', () => {
     assert.equal(normalizeStreet('W 34th St'), 'WEST 34 STREET');
     assert.equal(normalizeStreet('Central Park West'), 'CENTRAL PARK WEST');
   });
+  it('converts spelled-out ordinals, including compounds and hundreds', () => {
+    assert.equal(normalizeStreet('Fifth Avenue'), '5 AVENUE');
+    assert.equal(normalizeStreet('Second Ave'), '2 AVENUE');
+    assert.equal(normalizeStreet('West Forty-Second Street'), 'WEST 42 STREET');
+    assert.equal(normalizeStreet('East Forty Second St'), 'EAST 42 STREET');
+    assert.equal(normalizeStreet('One Hundred Twenty-Fifth Street'), '125 STREET');
+    assert.equal(normalizeStreet('Hundred and Tenth'), 'HUNDRED AND 10'); // "and" breaks the run; left alone
+  });
+  it('leaves ordinary words and cardinal-only runs alone', () => {
+    assert.equal(normalizeStreet('Central Park West'), 'CENTRAL PARK WEST');
+    assert.equal(normalizeStreet('Seven Avenue'), 'SEVEN AVENUE'); // cardinal without an ordinal ending: not a street number
+    assert.equal(normalizeStreet('Fifth Avenue'), normalizeStreet('5 AVENUE'));
+  });
   it('is idempotent on PAD form', () => {
     for (const s of ['5 AVENUE', '82 STREET', 'GILDERSLEEVE AVENUE']) assert.equal(normalizeStreet(s), s);
   });
