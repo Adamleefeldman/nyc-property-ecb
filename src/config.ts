@@ -27,10 +27,17 @@ function parsePort(raw: string): number {
   return port;
 }
 
+function parsePositiveInt(name: string, raw: string): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`${name} must be a positive integer (got "${raw}")`);
+  return n;
+}
+
 export interface Config {
   databaseUrl: string;
   port: number;
   socrataAppToken: string | undefined;
+  socrataTimeoutMs: number;
   ingestInterval: string;
   ingestIntervalMs: number;
 }
@@ -41,6 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: env.DATABASE_URL ?? 'postgres://app:app@localhost:5432/app',
     port: parsePort(env.PORT ?? '3000'),
     socrataAppToken: env.SOCRATA_APP_TOKEN || undefined,
+    socrataTimeoutMs: parsePositiveInt('SOCRATA_TIMEOUT_MS', env.SOCRATA_TIMEOUT_MS ?? '15000'),
     ingestInterval,
     ingestIntervalMs: parseInterval(ingestInterval),
   };

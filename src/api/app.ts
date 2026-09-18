@@ -4,6 +4,7 @@ import { pingDb } from '../db/pool.js';
 import { InvalidBblError } from '../resolver/bbl.js';
 import { HttpError } from './errors.js';
 import { propertyRoutes } from './properties.js';
+import { socrata } from '../socrata/index.js';
 
 export function buildApp() {
   const app = Fastify({ logger: true });
@@ -25,7 +26,7 @@ export function buildApp() {
   app.get('/health', async (_req, reply) => {
     try {
       await pingDb();
-      return { db: 'ok', ingestInterval: config.ingestInterval };
+      return { db: 'ok', ingestInterval: config.ingestInterval, socrataCalls: socrata.stats().calls };
     } catch (err) {
       reply.code(503);
       return { db: 'error', error: (err as Error).message };

@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../db/pool.js';
-import { getProperty, upsertPropertyByBbl } from '../resolver/properties.js';
+import { getProperty } from '../resolver/properties.js';
+import { registerByBbl } from '../resolver/resolve.js';
+import { socrata } from '../socrata/index.js';
 import { notFound } from './errors.js';
 
 const createBody = {
@@ -18,8 +20,8 @@ const idParams = {
 
 export async function propertyRoutes(app: FastifyInstance) {
   app.post<{ Body: { bbl: string } }>('/properties', { schema: { body: createBody } }, async (req, reply) => {
-    const { property, created } = await upsertPropertyByBbl(pool, req.body.bbl);
-    reply.code(created ? 201 : 200);
+    const { property, httpStatus } = await registerByBbl(pool, socrata, req.body.bbl);
+    reply.code(httpStatus);
     return property;
   });
 
