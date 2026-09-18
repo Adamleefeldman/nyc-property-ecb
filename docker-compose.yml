@@ -1,3 +1,5 @@
+name: nyc-property-ecb
+
 services:
   postgres:
     image: postgres:16-alpine
