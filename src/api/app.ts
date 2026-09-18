@@ -4,6 +4,7 @@ import { pingDb } from '../db/pool.js';
 import { InvalidBblError } from '../resolver/bbl.js';
 import { HttpError } from './errors.js';
 import { propertyRoutes } from './properties.js';
+import { violationRoutes } from './violations.js';
 import { socrata } from '../socrata/index.js';
 
 export function buildApp() {
@@ -34,6 +35,7 @@ export function buildApp() {
   });
 
   app.register(propertyRoutes);
+  app.register(violationRoutes);
 
   return app;
 }
