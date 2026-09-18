@@ -4,13 +4,16 @@
   "private": true,
   "description": "NYC property resolver + ECB violations pipeline and API",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "api": "tsx src/api/main.ts",
     "scheduler": "tsx src/pipeline/scheduler.ts",
     "migrate": "tsx src/db/migrate-cli.ts",
     "seed": "tsx src/scripts/seed.ts",
     "ingest": "tsx src/scripts/ingest.ts",
+    "renormalize": "tsx src/scripts/renormalize.ts",
     "import": "tsx src/scripts/import.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test 'src/**/*.test.ts'"

@@ -4,6 +4,8 @@
 
 export interface SocrataClient {
   get<T = Record<string, string>>(dataset: string, params: Record<string, string>): Promise<T[]>;
+  /** The dataset's own last-update time, from /api/views/<id>.json (rowsUpdatedAt). */
+  getRowsUpdatedAt(dataset: string): Promise<Date | null>;
   stats(): { calls: number };
   resetStats(): void;
 }
@@ -38,37 +40,45 @@ export function createSocrataClient(opts: SocrataClientOptions): SocrataClient {
   const fetchImpl = opts.fetchImpl ?? fetch;
   let calls = 0;
 
+  async function request(href: string): Promise<unknown> {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    if (opts.appToken) headers['x-app-token'] = opts.appToken;
+
+    calls += 1;
+    let res: Response;
+    try {
+      res = await fetchImpl(href, { headers, signal: AbortSignal.timeout(opts.timeoutMs) });
+    } catch (err) {
+      const timedOut = (err as Error).name === 'TimeoutError';
+      throw new SocrataError(
+        timedOut ? `timeout after ${opts.timeoutMs} ms` : `network error: ${(err as Error).message}`,
+        href,
+        undefined,
+        true,
+      );
+    }
+    if (!res.ok) {
+      const retryable = res.status === 429 || res.status >= 500;
+      throw new SocrataError(`HTTP ${res.status}`, href, res.status, retryable);
+    }
+    return res.json();
+  }
+
   return {
     async get<T>(dataset: string, params: Record<string, string>): Promise<T[]> {
       const url = new URL(`/resource/${dataset}.json`, baseUrl);
       for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-      const href = url.toString();
-
-      const headers: Record<string, string> = { accept: 'application/json' };
-      if (opts.appToken) headers['x-app-token'] = opts.appToken;
-
-      calls += 1;
-      let res: Response;
-      try {
-        res = await fetchImpl(href, { headers, signal: AbortSignal.timeout(opts.timeoutMs) });
-      } catch (err) {
-        const timedOut = (err as Error).name === 'TimeoutError';
-        throw new SocrataError(
-          timedOut ? `timeout after ${opts.timeoutMs} ms` : `network error: ${(err as Error).message}`,
-          href,
-          undefined,
-          true,
-        );
-      }
-      if (!res.ok) {
-        const retryable = res.status === 429 || res.status >= 500;
-        throw new SocrataError(`HTTP ${res.status}`, href, res.status, retryable);
-      }
-      const body: unknown = await res.json();
+      const body = await request(url.toString());
       if (!Array.isArray(body)) {
-        throw new SocrataError('response is not a JSON array', href, res.status, false);
+        throw new SocrataError('response is not a JSON array', url.toString(), undefined, false);
       }
       return body as T[];
+    },
+    async getRowsUpdatedAt(dataset: string): Promise<Date | null> {
+      const body = (await request(new URL(`/api/views/${dataset}.json`, baseUrl).toString())) as {
+        rowsUpdatedAt?: number;
+      };
+      return typeof body.rowsUpdatedAt === 'number' ? new Date(body.rowsUpdatedAt * 1000) : null;
     },
     stats: () => ({ calls }),
     resetStats: () => {

@@ -1,0 +1,37 @@
+// One live ECB row (6bgk-3dad) for the Empire State Building, captured 2026-09-18.
+// $select=*,:id,:created_at,:updated_at
+
+export const ESB_ROW = {
+  isn_dob_bis_extract: '493568',
+  ecb_violation_number: '38203884L',
+  ecb_violation_status: 'RESOLVE',
+  dob_violation_number: '060509E2460A2',
+  bin: '1015862',
+  boro: '1',
+  block: '00835',
+  lot: '0041',
+  hearing_date: '20090730',
+  hearing_time: '1030',
+  served_date: '20090605',
+  issue_date: '20090605',
+  severity: 'CLASS - 2',
+  violation_type: 'Elevators',
+  respondent_name: 'EMPIRE STATE LAND ASSOCIA',
+  respondent_house_number: '350',
+  respondent_street: '5 AVENUE',
+  respondent_city: 'NY',
+  respondent_zip: '10001',
+  violation_description: '34I4.34I REPAIR HOLES IN HOISTWAY AT 10TH FL',
+  penality_imposed: '500',
+  amount_paid: '500',
+  balance_due: '0',
+  infraction_code1: '251',
+  section_law_description1:
+    '28-301.1                                                                    FAILURE TO MAINTAIN BUILDING IN CODE-COMPLAINT MANNER:SERVICE EQUIPMEN',
+  aggravated_level: 'NO',
+  hearing_status: 'STIPULATION/IN-VIO',
+  certification_status: 'CERTIFICATE ACCEPTED',
+  ':id': 'row-3pdr.umj8-fak9',
+  ':created_at': '2025-03-03T14:31:52.675Z',
+  ':updated_at': '2025-03-03T14:31:52.675Z',
+};
