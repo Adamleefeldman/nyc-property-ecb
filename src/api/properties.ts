@@ -1,14 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../db/pool.js';
+import { resolverDeps } from '../resolver/index.js';
 import { getProperty } from '../resolver/properties.js';
-import { registerByBbl } from '../resolver/resolve.js';
-import { socrata } from '../socrata/index.js';
-import { notFound } from './errors.js';
+import { registerByAddress, registerByBbl } from '../resolver/resolve.js';
+import { badRequest, notFound } from './errors.js';
 
 const createBody = {
   type: 'object',
-  required: ['bbl'],
-  properties: { bbl: { type: 'string', minLength: 1 } },
+  properties: {
+    bbl: { type: 'string', minLength: 1 },
+    address: { type: 'string', minLength: 1 },
+  },
   additionalProperties: false,
 } as const;
 
@@ -19,8 +21,11 @@ const idParams = {
 } as const;
 
 export async function propertyRoutes(app: FastifyInstance) {
-  app.post<{ Body: { bbl: string } }>('/properties', { schema: { body: createBody } }, async (req, reply) => {
-    const { property, httpStatus } = await registerByBbl(pool, socrata, req.body.bbl);
+  app.post<{ Body: { bbl?: string; address?: string } }>('/properties', { schema: { body: createBody } }, async (req, reply) => {
+    const { bbl, address } = req.body;
+    if ((bbl === undefined) === (address === undefined)) throw badRequest('send exactly one of "bbl" or "address"');
+    const { property, httpStatus } =
+      bbl !== undefined ? await registerByBbl(pool, resolverDeps, bbl) : await registerByAddress(pool, resolverDeps, address!);
     reply.code(httpStatus);
     return property;
   });

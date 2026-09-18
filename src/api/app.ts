@@ -1,7 +1,9 @@
 import Fastify, { type FastifyError } from 'fastify';
 import { config } from '../config.js';
 import { pingDb } from '../db/pool.js';
+import { InvalidAddressError } from '../resolver/address.js';
 import { InvalidBblError } from '../resolver/bbl.js';
+import { geosearch } from '../resolver/index.js';
 import { HttpError } from './errors.js';
 import { propertyRoutes } from './properties.js';
 import { violationRoutes } from './violations.js';
@@ -17,6 +19,9 @@ export function buildApp() {
     if (err instanceof InvalidBblError) {
       return reply.code(400).send({ error: { code: 'invalid_bbl', message: err.message } });
     }
+    if (err instanceof InvalidAddressError) {
+      return reply.code(400).send({ error: { code: 'invalid_address', message: err.message } });
+    }
     if ('validation' in err && err.validation) {
       return reply.code(400).send({ error: { code: 'validation', message: err.message } });
     }
@@ -27,7 +32,12 @@ export function buildApp() {
   app.get('/health', async (_req, reply) => {
     try {
       await pingDb();
-      return { db: 'ok', ingestInterval: config.ingestInterval, socrataCalls: socrata.stats().calls };
+      return {
+        db: 'ok',
+        ingestInterval: config.ingestInterval,
+        socrataCalls: socrata.stats().calls,
+        geosearchCalls: geosearch.stats().calls,
+      };
     } catch (err) {
       reply.code(503);
       return { db: 'error', error: (err as Error).message };

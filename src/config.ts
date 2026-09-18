@@ -38,6 +38,8 @@ export interface Config {
   port: number;
   socrataAppToken: string | undefined;
   socrataTimeoutMs: number;
+  geosearchTimeoutMs: number;
+  geosearchAttempts: number;
   ecbPageSize: number;
   maxPagesPerBatch: number;
   ingestInterval: string;
@@ -51,6 +53,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: parsePort(env.PORT ?? '3000'),
     socrataAppToken: env.SOCRATA_APP_TOKEN || undefined,
     socrataTimeoutMs: parsePositiveInt('SOCRATA_TIMEOUT_MS', env.SOCRATA_TIMEOUT_MS ?? '15000'),
+    geosearchTimeoutMs: parsePositiveInt('GEOSEARCH_TIMEOUT_MS', env.GEOSEARCH_TIMEOUT_MS ?? '10000'),
+    geosearchAttempts: parsePositiveInt('GEOSEARCH_ATTEMPTS', env.GEOSEARCH_ATTEMPTS ?? '2'),
     ecbPageSize: parsePositiveInt('ECB_PAGE_SIZE', env.ECB_PAGE_SIZE ?? '1000'),
     maxPagesPerBatch: parsePositiveInt('MAX_PAGES_PER_BATCH', env.MAX_PAGES_PER_BATCH ?? '50'),
     ingestInterval,
