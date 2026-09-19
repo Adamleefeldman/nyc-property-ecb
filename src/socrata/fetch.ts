@@ -13,8 +13,19 @@ export interface SocrataClient {
 export interface SocrataClientOptions {
   appToken?: string | undefined;
   timeoutMs: number;
+  /** Attempts per request; 429, 5xx and timeouts are retried with backoff, 4xx never. Default 1. */
+  attempts?: number;
+  /** Minimum gap between two calls, so a batch run is polite to a free API. Default 0. */
+  minMsBetweenCalls?: number;
   baseUrl?: string;
   fetchImpl?: typeof fetch; // injected by tests; defaults to global fetch
+  sleep?: (ms: number) => Promise<void>; // injected by tests
+  now?: () => number;
+}
+
+/** 500 ms, 1 s, 2 s, … capped at 8 s. */
+export function backoffMs(attempt: number): number {
+  return Math.min(500 * 2 ** (attempt - 1), 8000);
 }
 
 export class SocrataError extends Error {
@@ -38,9 +49,30 @@ export function soqlString(value: string): string {
 export function createSocrataClient(opts: SocrataClientOptions): SocrataClient {
   const baseUrl = opts.baseUrl ?? 'https://data.cityofnewyork.us';
   const fetchImpl = opts.fetchImpl ?? fetch;
+  const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const now = opts.now ?? Date.now;
+  const attempts = opts.attempts ?? 1;
+  const minGap = opts.minMsBetweenCalls ?? 0;
   let calls = 0;
+  let lastCallAt = -Infinity;
 
+  /** Every attempt is a call: pace it, count it, and retry only what is worth retrying. */
   async function request(href: string): Promise<unknown> {
+    for (let attempt = 1; ; attempt += 1) {
+      const wait = lastCallAt + minGap - now();
+      if (wait > 0) await sleep(wait);
+      lastCallAt = now();
+      try {
+        return await requestOnce(href);
+      } catch (err) {
+        const retry = err instanceof SocrataError && err.retryable && attempt < attempts;
+        if (!retry) throw err;
+        await sleep(backoffMs(attempt));
+      }
+    }
+  }
+
+  async function requestOnce(href: string): Promise<unknown> {
     const headers: Record<string, string> = { accept: 'application/json' };
     if (opts.appToken) headers['x-app-token'] = opts.appToken;
 

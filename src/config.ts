@@ -33,6 +33,12 @@ function parsePositiveInt(name: string, raw: string): number {
   return n;
 }
 
+function parseNonNegativeInt(name: string, raw: string): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`${name} must be a non-negative integer (got "${raw}")`);
+  return n;
+}
+
 export interface Config {
   databaseUrl: string;
   port: number;
@@ -42,6 +48,12 @@ export interface Config {
   geosearchAttempts: number;
   ecbPageSize: number;
   maxPagesPerBatch: number;
+  batchSize: number;
+  maxAttempts: number;
+  minMsBetweenCalls: number;
+  /** Test knobs, off by default: exit after batch n / make batch n fail. */
+  ingestKillAfterBatch: number | undefined;
+  ingestFailBatch: number | undefined;
   ingestInterval: string;
   ingestIntervalMs: number;
 }
@@ -57,6 +69,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     geosearchAttempts: parsePositiveInt('GEOSEARCH_ATTEMPTS', env.GEOSEARCH_ATTEMPTS ?? '2'),
     ecbPageSize: parsePositiveInt('ECB_PAGE_SIZE', env.ECB_PAGE_SIZE ?? '1000'),
     maxPagesPerBatch: parsePositiveInt('MAX_PAGES_PER_BATCH', env.MAX_PAGES_PER_BATCH ?? '50'),
+    batchSize: parsePositiveInt('BATCH_SIZE', env.BATCH_SIZE ?? '600'),
+    maxAttempts: parsePositiveInt('MAX_ATTEMPTS', env.MAX_ATTEMPTS ?? '4'),
+    minMsBetweenCalls: parseNonNegativeInt('MIN_MS_BETWEEN_CALLS', env.MIN_MS_BETWEEN_CALLS ?? '250'),
+    ingestKillAfterBatch: env.INGEST_KILL_AFTER_BATCH ? parsePositiveInt('INGEST_KILL_AFTER_BATCH', env.INGEST_KILL_AFTER_BATCH) : undefined,
+    ingestFailBatch: env.INGEST_FAIL_BATCH ? parsePositiveInt('INGEST_FAIL_BATCH', env.INGEST_FAIL_BATCH) : undefined,
     ingestInterval,
     ingestIntervalMs: parseInterval(ingestInterval),
   };

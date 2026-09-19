@@ -5,4 +5,6 @@ import { createSocrataClient } from './fetch.js';
 export const socrata = createSocrataClient({
   appToken: config.socrataAppToken,
   timeoutMs: config.socrataTimeoutMs,
+  attempts: config.maxAttempts,
+  minMsBetweenCalls: config.minMsBetweenCalls,
 });

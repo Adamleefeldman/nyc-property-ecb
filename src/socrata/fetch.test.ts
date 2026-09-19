@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createSocrataClient, SocrataError, soqlString } from './fetch.js';
+import { backoffMs, createSocrataClient, SocrataError, soqlString } from './fetch.js';
 
 /** A fetch stand-in that records the request and answers with a canned response. */
 function fakeFetch(respond: (url: string, init: RequestInit) => Response) {
@@ -78,6 +78,58 @@ describe('createSocrataClient', () => {
     const f = fakeFetch(() => json({ message: 'nope' }));
     const client = createSocrataClient({ timeoutMs: 1000, fetchImpl: f.impl });
     await assert.rejects(client.get('x', {}), /not a JSON array/);
+  });
+});
+
+describe('retries and pacing', () => {
+  function timedClient(statuses: number[], extra: Partial<Parameters<typeof createSocrataClient>[0]> = {}) {
+    let i = 0;
+    let clock = 0;
+    const sleeps: number[] = [];
+    const f = fakeFetch(() => json([], statuses[Math.min(i++, statuses.length - 1)]));
+    const client = createSocrataClient({
+      timeoutMs: 1000,
+      fetchImpl: f.impl,
+      now: () => clock,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      ...extra,
+    });
+    return { client, sleeps, calls: f.calls };
+  }
+
+  it('retries a 503 with growing backoff, then succeeds', async () => {
+    const { client, sleeps } = timedClient([503, 503, 200], { attempts: 4 });
+    await client.get('x', {});
+    assert.equal(client.stats().calls, 3);
+    assert.deepEqual(sleeps, [500, 1000]);
+  });
+
+  it('gives up after the attempt limit and reports the last error', async () => {
+    const { client } = timedClient([429], { attempts: 3 });
+    await assert.rejects(client.get('x', {}), (e: unknown) => e instanceof SocrataError && e.status === 429);
+    assert.equal(client.stats().calls, 3);
+  });
+
+  it('never retries a 4xx', async () => {
+    const { client, sleeps } = timedClient([414, 200], { attempts: 4 });
+    await assert.rejects(client.get('x', {}));
+    assert.equal(client.stats().calls, 1);
+    assert.deepEqual(sleeps, []);
+  });
+
+  it('keeps the minimum gap between calls', async () => {
+    const { client, sleeps } = timedClient([200], { minMsBetweenCalls: 250 });
+    await client.get('x', {});
+    await client.get('x', {});
+    await client.get('x', {});
+    assert.deepEqual(sleeps, [250, 250]); // first call immediate, then paced
+  });
+
+  it('backoff is capped', () => {
+    assert.deepEqual([1, 2, 3, 4, 5, 6].map(backoffMs), [500, 1000, 2000, 4000, 8000, 8000]);
   });
 });
 

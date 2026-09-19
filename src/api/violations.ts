@@ -51,6 +51,7 @@ interface ViolationRow {
   infraction_code: string | null;
   section_law_description: string | null;
   aggravated_level: string | null;
+  absent_since_run_id: string | null;
   updated_at: Date;
 }
 
@@ -79,6 +80,8 @@ function toItem(r: ViolationRow) {
     infractionCode: r.infraction_code,
     sectionLawDescription: r.section_law_description,
     aggravatedLevel: r.aggravated_level,
+    /** Set when the city stopped returning this row; we keep and flag it rather than delete. */
+    absentSinceRunId: r.absent_since_run_id === null ? null : Number(r.absent_since_run_id),
     updatedAt: r.updated_at.toISOString(),
   };
 }
