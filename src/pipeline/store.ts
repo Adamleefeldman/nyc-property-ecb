@@ -229,6 +229,7 @@ export async function addRunCounts(
 export interface RunRow {
   id: number;
   status: RunStatus;
+  trigger: string;
   started_at: Date;
   finished_at: Date | null;
   source_rows_updated_at: Date | null;
@@ -260,4 +261,21 @@ export async function findUnfinishedRun(db: Queryable): Promise<RunRow | null> {
 
 export async function closeRun(db: Queryable, runId: number, status: RunStatus, error: string | null): Promise<void> {
   await db.query(`UPDATE ingestion_runs SET status = $2, finished_at = now(), error = $3 WHERE id = $1`, [runId, status, error]);
+}
+
+export async function listRuns(db: Queryable, limit: number): Promise<RunRow[]> {
+  const { rows } = await db.query<RunRow>(
+    `SELECT * FROM ingestion_runs WHERE dataset = 'ecb' ORDER BY id DESC LIMIT $1`,
+    [limit],
+  );
+  return rows.map((r) => ({ ...r, id: Number(r.id) }));
+}
+
+/** When data was last refreshed end to end (a succeeded or partial run). */
+export async function lastSuccessfulRunAt(db: Queryable): Promise<Date | null> {
+  const { rows } = await db.query<{ finished_at: Date }>(
+    `SELECT finished_at FROM ingestion_runs
+      WHERE dataset = 'ecb' AND status IN ('succeeded', 'partial') ORDER BY id DESC LIMIT 1`,
+  );
+  return rows[0]?.finished_at ?? null;
 }

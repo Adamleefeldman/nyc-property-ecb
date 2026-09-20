@@ -157,6 +157,9 @@ without a lookup.
 **Rows without a BIN.** About 4,600 ECB rows have no BIN. They cannot be
 attached to any property and are not served.
 
+**No authentication.** `/admin/*` triggers work and exposes the run log;
+in production it would sit behind auth. Out of scope here.
+
 ## Spot checks against BIS
 
 | Property                | Our count | BIS Property Profile | Match |

@@ -1,12 +1,14 @@
 import Fastify, { type FastifyError } from 'fastify';
 import { config } from '../config.js';
-import { pingDb } from '../db/pool.js';
+import { pingDb, pool } from '../db/pool.js';
 import { InvalidAddressError } from '../resolver/address.js';
 import { InvalidBblError } from '../resolver/bbl.js';
 import { geosearch } from '../resolver/index.js';
 import { HttpError } from './errors.js';
 import { propertyRoutes } from './properties.js';
 import { violationRoutes } from './violations.js';
+import { adminRoutes } from './admin.js';
+import { lastSuccessfulRunAt } from '../pipeline/store.js';
 import { socrata } from '../socrata/index.js';
 
 export function buildApp() {
@@ -35,6 +37,8 @@ export function buildApp() {
       return {
         db: 'ok',
         ingestInterval: config.ingestInterval,
+        lastSuccessfulRunAt: (await lastSuccessfulRunAt(pool))?.toISOString() ?? null,
+        // Counters for this API process only; the per-run numbers in ingestion_runs are authoritative.
         socrataCalls: socrata.stats().calls,
         geosearchCalls: geosearch.stats().calls,
       };
@@ -46,6 +50,7 @@ export function buildApp() {
 
   app.register(propertyRoutes);
   app.register(violationRoutes);
+  app.register(adminRoutes);
 
   return app;
 }
