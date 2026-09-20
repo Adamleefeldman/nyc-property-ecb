@@ -49,6 +49,7 @@ export interface Config {
   ecbPageSize: number;
   maxPagesPerBatch: number;
   batchSize: number;
+  footprintsBatchSize: number;
   maxAttempts: number;
   minMsBetweenCalls: number;
   /** Test knobs, off by default: exit after batch n / make batch n fail. */
@@ -70,6 +71,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ecbPageSize: parsePositiveInt('ECB_PAGE_SIZE', env.ECB_PAGE_SIZE ?? '1000'),
     maxPagesPerBatch: parsePositiveInt('MAX_PAGES_PER_BATCH', env.MAX_PAGES_PER_BATCH ?? '50'),
     batchSize: parsePositiveInt('BATCH_SIZE', env.BATCH_SIZE ?? '600'),
+    footprintsBatchSize: parsePositiveInt('FOOTPRINTS_BATCH_SIZE', env.FOOTPRINTS_BATCH_SIZE ?? '500'),
     maxAttempts: parsePositiveInt('MAX_ATTEMPTS', env.MAX_ATTEMPTS ?? '4'),
     minMsBetweenCalls: parseNonNegativeInt('MIN_MS_BETWEEN_CALLS', env.MIN_MS_BETWEEN_CALLS ?? '250'),
     ingestKillAfterBatch: env.INGEST_KILL_AFTER_BATCH ? parsePositiveInt('INGEST_KILL_AFTER_BATCH', env.INGEST_KILL_AFTER_BATCH) : undefined,

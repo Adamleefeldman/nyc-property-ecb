@@ -43,3 +43,34 @@ export async function lookupBins(client: SocrataClient, bbl: string): Promise<Lo
   }
   return [...seen.values()].sort((a, b) => a.bin.localeCompare(b.bin));
 }
+
+/**
+ * The same lookup for many lots in one call (bulk import). Each row is filed
+ * under the BBL it matched; lots with no rows get an empty list, so the
+ * caller can settle every lot it asked about.
+ */
+export async function lookupBinsForMany(client: SocrataClient, bbls: string[]): Promise<Map<string, LotBuilding[]>> {
+  const result = new Map<string, LotBuilding[]>(bbls.map((b) => [b, []]));
+  if (bbls.length === 0) return result;
+  const list = bbls.map(soqlString).join(',');
+  const rows = await client.get<FootprintRow>(FOOTPRINTS_DATASET, {
+    $select: 'bin,base_bbl,mappluto_bbl',
+    $where: `mappluto_bbl in (${list}) OR base_bbl in (${list})`,
+    $limit: '50000',
+  });
+  for (const row of rows) {
+    const bin = String(row.bin);
+    // A row can belong to two of our lots (a condo's billing lot and ground lot).
+    const targets: Array<[string, LotBuilding['source']]> = [
+      [row.mappluto_bbl, 'mappluto_bbl'],
+      [row.base_bbl, 'base_bbl'],
+    ];
+    for (const [bbl, source] of targets) {
+      const list = result.get(bbl);
+      if (!list || list.some((b) => b.bin === bin)) continue;
+      list.push({ bin, source, isPlaceholder: isPlaceholderBin(bin) });
+    }
+  }
+  for (const list of result.values()) list.sort((a, b) => a.bin.localeCompare(b.bin));
+  return result;
+}

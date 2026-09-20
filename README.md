@@ -73,8 +73,12 @@ POST /properties
 
 `GET /properties/:id/ecb-violations?open=true&unpaid=true&limit=50&cursor=…`
 
-Served from our database only. Newest first. `open=true` keeps rows with
-`ecb_violation_status = ACTIVE`; `unpaid=true` keeps rows with `balance_due > 0`.
+Served from our database only. Newest first (`issue_date`, then violation
+number). `open=true` keeps rows with `ecb_violation_status = ACTIVE`;
+`unpaid=true` keeps rows with `balance_due > 0` (strictly: about 25,000 rows
+carry a negative balance, a credit, and are not "unpaid"). `cursor` is
+opaque; pass back `nextCursor` until it is `null`. Pages stay stable while
+the pipeline inserts rows.
 
 Every response says how fresh the data is and whether we actually checked:
 
@@ -106,15 +110,34 @@ An empty `items` with `state: checked` means "no violations". An empty
 ### Add properties in bulk
 
 `POST /properties/bulk` with `{ "bbls": ["1008350041", "…"] }` (up to 10,000).
-Returns counts of created / existing / failed. Also: `npm run import -- file.csv`.
+Not a loop over the single endpoint: the lots go in with one statement and
+Building Footprints is asked about 500 lots per call. Returns counts, not
+records:
+
+```json
+{ "received": 104, "distinct": 102, "created": 100, "existing": 2, "failed": 2,
+  "byStatus": { "resolved": 100, "not_applicable": 1, "unresolved": 1, "pending": 0 },
+  "footprintsCalls": 1,
+  "failures": [ { "index": 100, "bbl": "nope", "error": "invalid BBL …" } ], "failuresTruncated": false }
+```
+
+An invalid item fails alone; the rest go through. BBL items never touch
+GeoSearch. `npm run import -- file.csv` does the same from a file with a
+`bbl` column (or one BBL per line), in chunks of 1,000.
 
 ### List across properties
 
 `GET /ecb-violations?updatedSince=2026-09-10T00:00:00Z&limit=500&cursor=…`
 — every violation we stored or changed since a time, across all properties,
 so a scanner can read everything in a few calls instead of one per property.
+Most recently changed first; each item carries `propertyIds`. `open` and
+`unpaid` work here too. **`updatedSince` is our clock**: when we stored the
+row or its served values changed (`updatedAt` on each item), not the city's
+`:updated_at`.
 
-`GET /properties?unpaid=true` — properties with any `balance_due > 0`.
+`GET /properties?unpaid=true&limit=100&cursor=…` — properties with any
+`balance_due > 0`, with `unpaidCount`, `unpaidTotal` and `activeCount` per
+property. Without the filter, every tracked property, by BBL.
 
 ## Where the IDs come from
 

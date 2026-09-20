@@ -8,6 +8,7 @@ import { HttpError } from './errors.js';
 import { propertyRoutes } from './properties.js';
 import { violationRoutes } from './violations.js';
 import { adminRoutes } from './admin.js';
+import { bulkRoutes } from './bulk.js';
 import { lastSuccessfulRunAt } from '../pipeline/store.js';
 import { socrata } from '../socrata/index.js';
 
@@ -48,6 +49,7 @@ export function buildApp() {
     }
   });
 
+  app.register(bulkRoutes); // before propertyRoutes so /properties/bulk is not read as /properties/:id
   app.register(propertyRoutes);
   app.register(violationRoutes);
   app.register(adminRoutes);

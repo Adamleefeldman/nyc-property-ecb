@@ -1,9 +1,16 @@
-// GET /properties/:id/ecb-violations — served from Postgres only, never Socrata.
+// Violation reads. Served from Postgres only, never Socrata.
+//
+//   GET /properties/:id/ecb-violations   one property, newest issue first
+//   GET /ecb-violations?updatedSince=    every property, most recently changed first
+//
+// Both page with a keyset cursor on their sort key, so pages stay stable
+// while the pipeline inserts rows.
 
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../db/pool.js';
 import { getProperty } from '../resolver/properties.js';
 import { coverageFor } from './coverage.js';
+import { decodeCursor, encodeCursor } from './cursor.js';
 import { badRequest, notFound } from './errors.js';
 
 const idParams = {
@@ -12,22 +19,33 @@ const idParams = {
   properties: { id: { type: 'string', format: 'uuid' } },
 } as const;
 
-const listQuery = {
+const filterProps = {
+  open: { type: 'boolean' },
+  unpaid: { type: 'boolean' },
+  cursor: { type: 'string' },
+} as const;
+
+const perPropertyQuery = {
+  type: 'object',
+  properties: { ...filterProps, limit: { type: 'integer', minimum: 1, maximum: 500, default: 50 } },
+  additionalProperties: false,
+} as const;
+
+const crossPropertyQuery = {
   type: 'object',
   properties: {
-    open: { type: 'boolean' },
-    unpaid: { type: 'boolean' },
-    limit: { type: 'integer', minimum: 1, maximum: 500, default: 50 },
-    cursor: { type: 'string' },
+    ...filterProps,
+    updatedSince: { type: 'string', format: 'date-time' },
+    limit: { type: 'integer', minimum: 1, maximum: 1000, default: 500 },
   },
   additionalProperties: false,
 } as const;
 
-interface ListQuery {
+interface Filters {
   open?: boolean;
   unpaid?: boolean;
-  limit: number;
   cursor?: string;
+  limit: number;
 }
 
 interface ViolationRow {
@@ -53,6 +71,9 @@ interface ViolationRow {
   aggravated_level: string | null;
   absent_since_run_id: string | null;
   updated_at: Date;
+  /** updated_at as Postgres text (microsecond precision) for the cursor; a JS Date would truncate to ms. */
+  updated_at_text?: string;
+  property_ids?: string[] | null;
 }
 
 const money = (v: string | null) => (v === null ? null : Number(v));
@@ -60,6 +81,7 @@ const money = (v: string | null) => (v === null ? null : Number(v));
 /** SQL snake_case → JSON camelCase; NUMERIC text → number. */
 function toItem(r: ViolationRow) {
   return {
+    // (updated_at_text is cursor plumbing, not part of the item)
     ecbViolationNumber: r.ecb_violation_number,
     bin: r.bin,
     bbl: r.bbl,
@@ -82,46 +104,89 @@ function toItem(r: ViolationRow) {
     aggravatedLevel: r.aggravated_level,
     /** Set when the city stopped returning this row; we keep and flag it rather than delete. */
     absentSinceRunId: r.absent_since_run_id === null ? null : Number(r.absent_since_run_id),
+    /** Our clock: when we stored the row or its served values last changed. Not the city's timestamp. */
     updatedAt: r.updated_at.toISOString(),
+    ...(r.property_ids !== undefined ? { propertyIds: r.property_ids ?? [] } : {}),
   };
 }
 
-/** Today's cursor is the offset as text; step 9 replaces it with a keyset cursor. */
-function parseCursor(cursor: string | undefined): number {
-  if (cursor === undefined) return 0;
-  const n = Number(cursor);
-  if (!Number.isInteger(n) || n < 0) throw badRequest('invalid cursor');
-  return n;
+/** The open / unpaid filters, as SQL. `unpaid` is strictly positive: negative balances are credits. */
+function filterSql(q: Filters): string[] {
+  const where: string[] = [];
+  if (q.open) where.push(`status = 'ACTIVE'`);
+  if (q.unpaid) where.push('balance_due > 0');
+  return where;
 }
 
 export async function violationRoutes(app: FastifyInstance) {
-  app.get<{ Params: { id: string }; Querystring: ListQuery }>(
+  // ---- one property: newest issue_date first, violation number as tiebreaker ----
+  app.get<{ Params: { id: string }; Querystring: Filters }>(
     '/properties/:id/ecb-violations',
-    { schema: { params: idParams, querystring: listQuery } },
+    { schema: { params: idParams, querystring: perPropertyQuery } },
     async (req) => {
       const property = await getProperty(pool, req.params.id);
       if (!property) throw notFound('property');
-
       const coverage = await coverageFor(pool, property);
-      const offset = parseCursor(req.query.cursor);
-      const { limit } = req.query;
 
-      const where = ['bin = ANY($1)'];
-      if (req.query.open) where.push(`status = 'ACTIVE'`);
-      if (req.query.unpaid) where.push('balance_due > 0');
-
+      const params: unknown[] = [property.bins, req.query.limit];
+      const where = ['bin = ANY($1)', ...filterSql(req.query)];
+      if (req.query.cursor) {
+        // Rows after the cursor row in (issue_date DESC NULLS LAST, number DESC) order.
+        const { d, n } = decodeCursor(req.query.cursor, ['d', 'n'] as const);
+        if (n === null) throw badRequest('invalid cursor');
+        if (d === null) {
+          params.push(n);
+          where.push(`issue_date IS NULL AND ecb_violation_number < $${params.length}`);
+        } else {
+          params.push(d, n);
+          where.push(
+            `(issue_date < $${params.length - 1} OR (issue_date = $${params.length - 1} AND ecb_violation_number < $${params.length}) OR issue_date IS NULL)`,
+          );
+        }
+      }
       const { rows } = await pool.query<ViolationRow>(
-        `SELECT * FROM ecb_violations
-          WHERE ${where.join(' AND ')}
-          ORDER BY issue_date DESC NULLS LAST, ecb_violation_number DESC
-          LIMIT $2 OFFSET $3`,
-        [property.bins, limit, offset],
+        `SELECT * FROM ecb_violations WHERE ${where.join(' AND ')}
+          ORDER BY issue_date DESC NULLS LAST, ecb_violation_number DESC LIMIT $2`,
+        params,
       );
-
+      const last = rows[rows.length - 1];
       return {
         coverage,
         items: rows.map(toItem),
-        nextCursor: rows.length === limit ? String(offset + limit) : null,
+        nextCursor: rows.length === req.query.limit && last ? encodeCursor({ d: last.issue_date, n: last.ecb_violation_number }) : null,
+      };
+    },
+  );
+
+  // ---- every property: rows stored or changed since a time, most recent change first ----
+  app.get<{ Querystring: Filters & { updatedSince?: string } }>(
+    '/ecb-violations',
+    { schema: { querystring: crossPropertyQuery } },
+    async (req) => {
+      const params: unknown[] = [req.query.limit];
+      const where = [...filterSql(req.query)];
+      if (req.query.updatedSince) {
+        params.push(req.query.updatedSince);
+        where.push(`updated_at >= $${params.length}`);
+      }
+      if (req.query.cursor) {
+        const { t, n } = decodeCursor(req.query.cursor, ['t', 'n'] as const);
+        if (t === null || n === null) throw badRequest('invalid cursor');
+        params.push(t, n);
+        where.push(`(updated_at, ecb_violation_number) < ($${params.length - 1}::timestamptz, $${params.length})`);
+      }
+      const { rows } = await pool.query<ViolationRow>(
+        `SELECT v.*, v.updated_at::text AS updated_at_text,
+                (SELECT array_agg(DISTINCT b.property_id) FROM property_bins b WHERE b.bin = v.bin) AS property_ids
+           FROM ecb_violations v ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+          ORDER BY updated_at DESC, ecb_violation_number DESC LIMIT $1`,
+        params,
+      );
+      const last = rows[rows.length - 1];
+      return {
+        items: rows.map(toItem),
+        nextCursor:
+          rows.length === req.query.limit && last ? encodeCursor({ t: last.updated_at_text!, n: last.ecb_violation_number }) : null,
       };
     },
   );

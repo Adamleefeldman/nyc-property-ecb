@@ -273,3 +273,49 @@ export async function listRetryable(
   );
   return rows.map((r) => ({ id: r.id, kind: r.kind, rawInput: r.raw_input, status: r.resolution_status }));
 }
+
+// ---------------------------------------------------------------------------
+// Bulk: many lots in one statement, then the caller settles BINs in batches.
+
+export interface BulkLot {
+  lot: Bbl;
+  rawInputs: string[]; // every spelling that mapped to this lot in the request
+  status: 'pending' | 'unresolved';
+  reason: string | null;
+}
+
+export interface BulkUpsertRow {
+  id: string;
+  bbl: string;
+  created: boolean;
+  resolution_status: ResolutionStatus;
+  has_bins: boolean;
+}
+
+/** Insert-or-return every lot in one round trip and record all their inputs in another. */
+export async function upsertLotsBulk(db: pg.Pool, lots: BulkLot[]): Promise<BulkUpsertRow[]> {
+  if (lots.length === 0) return [];
+  return withTransaction(db, async (client) => {
+    const { rows } = await client.query<BulkUpsertRow>(
+      `INSERT INTO properties (bbl, borough, block, lot, resolution_status, resolution_source, resolution_reason)
+       SELECT l.bbl, l.borough, l.block, l.lot, l.status, 'bbl', l.reason
+         FROM jsonb_to_recordset($1::jsonb) AS l(bbl char(10), borough smallint, block char(5), lot char(4), status text, reason text)
+       ON CONFLICT (bbl) DO UPDATE SET updated_at = properties.updated_at
+       RETURNING id, bbl, (xmax = 0) AS created, resolution_status,
+                 EXISTS (SELECT 1 FROM property_bins b WHERE b.property_id = properties.id) AS has_bins`,
+      [JSON.stringify(lots.map((l) => ({ ...l.lot, status: l.status, reason: l.reason })))],
+    );
+    const idByBbl = new Map(rows.map((r) => [r.bbl, r.id]));
+    const inputs = lots.flatMap((l) =>
+      l.rawInputs.map((raw) => ({ kind: 'bbl', input_key: raw.trim(), raw_input: raw, property_id: idByBbl.get(l.lot.bbl)! })),
+    );
+    await client.query(
+      `INSERT INTO property_inputs (kind, input_key, raw_input, property_id)
+       SELECT i.kind, i.input_key, i.raw_input, i.property_id
+         FROM jsonb_to_recordset($1::jsonb) AS i(kind text, input_key text, raw_input text, property_id uuid)
+       ON CONFLICT (kind, input_key) DO NOTHING`,
+      [JSON.stringify(inputs)],
+    );
+    return rows;
+  });
+}
