@@ -141,8 +141,15 @@ export async function runIngestion(db: pg.Pool, socrata: SocrataClient, opts: In
     let rowsAbsent = 0;
     let fatal: string | null = null;
 
+    let pending: Awaited<ReturnType<typeof listPendingBatches>> = [];
     try {
-      for (const batch of await listPendingBatches(db, runId)) {
+      pending = await listPendingBatches(db, runId);
+    } catch (err) {
+      fatal = (err as Error).message;
+    }
+
+    for (const batch of pending) {
+      try {
         await markBatchStarted(db, runId, batch.batch_no);
         const callsBefore = socrata.stats().calls;
         try {
@@ -193,10 +200,14 @@ export async function runIngestion(db: pg.Pool, socrata: SocrataClient, opts: In
             socrataCalls: socrata.stats().calls - callsBefore,
           });
         }
-        if (opts.afterBatch) await opts.afterBatch(batch.batch_no);
+      } catch (err) {
+        // Bookkeeping itself failed (database gone?): close the run as failed.
+        fatal = (err as Error).message;
+        break;
       }
-    } catch (err) {
-      fatal = (err as Error).message;
+      // Outside the guard on purpose: the hook stands in for the process dying
+      // (the CLI exits here), and a dead process closes nothing.
+      if (opts.afterBatch) await opts.afterBatch(batch.batch_no);
     }
 
     const before = (await getRun(db, runId))!;

@@ -139,6 +139,29 @@ row or its served values changed (`updatedAt` on each item), not the city's
 `balance_due > 0`, with `unpaidCount`, `unpaidTotal` and `activeCount` per
 property. Without the filter, every tracked property, by BBL.
 
+## Tests
+
+```sh
+npm test                          # unit tests: no database, no network
+docker compose run api npm test   # adds the database-backed suites
+```
+
+Nothing ever calls the city from a test: GeoSearch and Socrata are replaced
+by fakes that serve captured responses (`src/*/fixtures/`) and can be
+switched into outage mode. The unit tests cover normalisation, the clients
+(retries, backoff, pacing, the 414 guard), the batch planner and cursors.
+The `*.integration.test.ts` suites run against a real Postgres, one
+throwaway database per file (`app_test_*`, never `app`), and prove the
+behaviours that only show in the database: the same lot in any spelling or
+by address is one record; a source outage leaves a `pending` row that a
+retry settles under the same id; the same rows ingested twice change
+nothing; a changed balance moves only that row's `updatedAt`; a row the
+city drops is flagged, not deleted; a failing batch makes the run `partial`
+and only its properties `failed`; a run that dies mid-way is resumed by the
+next one; every coverage state through the API; pages that never repeat or
+skip while rows are being inserted. Without a reachable Postgres those
+suites skip with a message rather than fail.
+
 ## Where the IDs come from
 
 | Step                    | Source                         | Why                                                                                                                                                                       |
