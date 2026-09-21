@@ -1,0 +1,30 @@
+[
+  {
+    "address": "350 5th Avenue, Manhattan",
+    "why": "Shared reference case (Empire State Building). BBL 1008350041, BIN 1015862, 241 violations, none unpaid."
+  },
+  {
+    "address": "37-15 82nd Street, Queens",
+    "why": "Hyphenated Queens house number. The hyphen is part of the number, not a range."
+  },
+  {
+    "address": "15 Central Park West Apt 12B, Manhattan",
+    "why": "Condo unit. The unit's own tax lot cannot be resolved from a BBL; the address resolves to the building's billing lot with two BINs."
+  },
+  {
+    "address": "939 2nd Avenue, Manhattan",
+    "why": "Has an unpaid ECB balance (ACTIVE violations, ~$434k due)."
+  },
+  {
+    "address": "50-47 69th Street, Queens",
+    "why": "Small 2-family house (PLUTO class B3, 2 units). One violation on record."
+  },
+  {
+    "address": "50-48 69th Place, Queens",
+    "why": "Small 2-family house with zero ECB violations: demonstrates coverage state `checked` with an empty list."
+  },
+  {
+    "address": "851 Grand Concourse, Bronx",
+    "why": "Third borough; a public building (Bronx County Courthouse) with a long, fully-paid violation history."
+  }
+]

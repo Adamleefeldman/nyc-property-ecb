@@ -52,6 +52,8 @@ export async function lookupBins(client: SocrataClient, bbl: string): Promise<Lo
 export async function lookupBinsForMany(client: SocrataClient, bbls: string[]): Promise<Map<string, LotBuilding[]>> {
   const result = new Map<string, LotBuilding[]>(bbls.map((b) => [b, []]));
   if (bbls.length === 0) return result;
+  // Each lot appears twice in the URL (~38 chars encoded); Socrata answers
+  // HTTP 414 past ~16 KB, so callers chunk to FOOTPRINTS_BATCH_SIZE (300).
   const list = bbls.map(soqlString).join(',');
   const rows = await client.get<FootprintRow>(FOOTPRINTS_DATASET, {
     $select: 'bin,base_bbl,mappluto_bbl',

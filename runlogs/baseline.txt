@@ -1,0 +1,30 @@
+$ docker compose run --rm api npm run seed
+ Container nyc-property-ecb-postgres-1 Running 
+ Container nyc-property-ecb-postgres-1 Waiting 
+ Container nyc-property-ecb-postgres-1 Healthy 
+ Container nyc-property-ecb-api-run-0961222cd26c Creating 
+ Container nyc-property-ecb-api-run-0961222cd26c Created 
+
+> nyc-property-ecb@0.1.0 seed
+> tsx src/scripts/seed.ts
+
+created  350 5th Avenue, Manhattan                  1008350041 resolved       bins 1015862
+created  37-15 82nd Street, Queens                  4014700059 resolved       bins 4036223
+created  15 Central Park West Apt 12B, Manhattan    1011147503 resolved       bins 1087510+1087839
+created  939 2nd Avenue, Manhattan                  1013230128 resolved       bins 1038249
+created  50-47 69th Street, Queens                  4024380004 resolved       bins 4056367
+created  50-48 69th Place, Queens                   4024380046 resolved       bins 4056380+4520930
+created  851 Grand Concourse, Bronx                 2024680001 resolved       bins 2002869
+seed: 7 addresses → 7 created, 0 existing, 0 pending, 0 failed
+
+$ docker compose run --rm api npm run ingest
+ Container nyc-property-ecb-postgres-1 Running 
+ Container nyc-property-ecb-postgres-1 Waiting 
+ Container nyc-property-ecb-postgres-1 Healthy 
+ Container nyc-property-ecb-api-run-8d91451f6663 Creating 
+ Container nyc-property-ecb-api-run-8d91451f6663 Created 
+
+> nyc-property-ecb@0.1.0 ingest
+> tsx src/scripts/ingest.ts
+
+run 1 succeeded in 1.8s: 2 Socrata calls, 1 batches (0 failed), 407 rows fetched, 407 stored (407 new, 0 changed, 0 absent), 7 properties checked

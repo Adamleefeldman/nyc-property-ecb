@@ -1,0 +1,57 @@
+$ docker compose run --rm api npm run import -- seed/scale-10k.csv
+ Container nyc-property-ecb-postgres-1 Running 
+ Container nyc-property-ecb-postgres-1 Waiting 
+ Container nyc-property-ecb-postgres-1 Healthy 
+ Container nyc-property-ecb-api-run-0868ff29d3a7 Creating 
+ Container nyc-property-ecb-api-run-0868ff29d3a7 Created 
+
+> nyc-property-ecb@0.1.0 import
+> tsx src/scripts/import.ts seed/scale-10k.csv
+
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+  chunk: 1000 received, 1000 created, 0 existing, 0 failed, 2 Footprints calls
+import seed/scale-10k.csv: 10000 BBLs in 10.1s → 10000 created, 0 existing, 0 invalid; 0 resolved, 0 not_applicable, 17 unresolved, 9983 pending; 20 Footprints calls
+
+# First attempt above ran with the old default FOOTPRINTS_BATCH_SIZE=500: every Footprints call was HTTP 414 (URL too long),
+# so 9,983 lots were stored as pending. Default lowered to 300 and the same import re-run; pending lots are picked up again:
+$ docker compose run --rm api npm run import -- seed/scale-10k.csv
+ Container nyc-property-ecb-postgres-1 Running 
+ Container nyc-property-ecb-postgres-1 Waiting 
+ Container nyc-property-ecb-postgres-1 Healthy 
+ Container nyc-property-ecb-api-run-506f0fd833f0 Creating 
+ Container nyc-property-ecb-api-run-506f0fd833f0 Created 
+
+> nyc-property-ecb@0.1.0 import
+> tsx src/scripts/import.ts seed/scale-10k.csv
+
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+  chunk: 1000 received, 0 created, 1000 existing, 0 failed, 4 Footprints calls
+import seed/scale-10k.csv: 10000 BBLs in 22.5s → 0 created, 10000 existing, 0 invalid; 9462 resolved, 521 not_applicable, 17 unresolved, 0 pending; 40 Footprints calls
+
+$ docker compose run --rm api npm run ingest
+ Container nyc-property-ecb-postgres-1 Running 
+ Container nyc-property-ecb-postgres-1 Waiting 
+ Container nyc-property-ecb-postgres-1 Healthy 
+ Container nyc-property-ecb-api-run-f151513a1f5a Creating 
+ Container nyc-property-ecb-api-run-f151513a1f5a Created 
+
+> nyc-property-ecb@0.1.0 ingest
+> tsx src/scripts/ingest.ts
+
+run 3 succeeded in 49.1s: 44 Socrata calls, 18 batches (0 failed), 37574 rows fetched, 37574 stored (37167 new, 0 changed, 0 absent), 9469 properties checked

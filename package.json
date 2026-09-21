@@ -12,6 +12,7 @@
     "scheduler": "tsx src/pipeline/scheduler.ts",
     "migrate": "tsx src/db/migrate-cli.ts",
     "seed": "tsx src/scripts/seed.ts",
+    "seed:pluto": "tsx src/scripts/pull-pluto.ts",
     "ingest": "tsx src/scripts/ingest.ts",
     "renormalize": "tsx src/scripts/renormalize.ts",
     "resolve:retry": "tsx src/scripts/resolve-retry.ts",

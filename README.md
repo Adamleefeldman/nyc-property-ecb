@@ -18,9 +18,35 @@ Starts Postgres, the API on http://localhost:3000, and the scheduler.
 Migrations run on start. To load the sample addresses and run the pipeline once:
 
 ```sh
-docker compose run api npm run seed
-docker compose run api npm run ingest
+docker compose run --rm api npm run seed
+docker compose run --rm api npm run ingest
 ```
+
+`seed/addresses.json` holds seven real addresses, each with the reason it is
+there: 350 5th Avenue (the reference case), a hyphenated Queens number, a
+condo unit, one with an unpaid balance, two small 2-family houses (one with
+a single violation, one with none, so `checked` with an empty list is
+demonstrable), and a Bronx public building. The seed goes through the same
+resolver as `POST /properties`; running it twice creates nothing.
+
+## Scale run: 10,000 lots
+
+`seed/scale-10k.csv` is the first 10,000 lots of Brooklyn community district
+301 (Williamsburg/Greenpoint), by BBL, pulled from PLUTO with `npm run
+seed:pluto` (the script is the provenance). Load and run:
+
+```sh
+docker compose run --rm api npm run import -- seed/scale-10k.csv
+docker compose run --rm api npm run ingest
+```
+
+Measured on 2026-09-20 (`runlogs/scale-10k.txt`): the import resolved
+10,000 lots in 22.5 s with 40 Building Footprints calls (9,462 with
+buildings, 521 vacant or placeholder-only, 17 condo unit lots); the run
+fetched 37,574 violations for 10,742 BINs in 49 s with 44 Socrata calls in
+18 batches, 0 failed. A second run over the same lots stores 0 new rows.
+`runlogs/kill-resume.txt` shows the same run killed after batch 5 and
+finished by the next start.
 
 ## Change the schedule
 
@@ -37,7 +63,7 @@ Change it in `.env` and restart. No code changes.
 Either:
 
 ```sh
-docker compose run api npm run ingest
+docker compose run --rm api npm run ingest
 ```
 
 or `POST /admin/ingest/run`. Both return the run's summary: wall time,
@@ -111,7 +137,8 @@ An empty `items` with `state: checked` means "no violations". An empty
 
 `POST /properties/bulk` with `{ "bbls": ["1008350041", "…"] }` (up to 10,000).
 Not a loop over the single endpoint: the lots go in with one statement and
-Building Footprints is asked about 500 lots per call. Returns counts, not
+Building Footprints is asked about 300 lots per call (the URL limit is ~16 KB;
+400 lots passes, 450 is HTTP 414). Returns counts, not
 records:
 
 ```json
@@ -139,11 +166,21 @@ row or its served values changed (`updatedAt` on each item), not the city's
 `balance_due > 0`, with `unpaidCount`, `unpaidTotal` and `activeCount` per
 property. Without the filter, every tracked property, by BBL.
 
+## Run logs
+
+`runlogs/` is untouched console output: `baseline.txt` (seed, first run),
+`second-run.txt` (same commands again: 0 new, 0 changed), `scale-10k.txt`
+(the import and the 10,000-lot run), `kill-resume.txt` (a run killed after
+batch 5, resumed by the next start). The first import in `scale-10k.txt`
+failed with HTTP 414 on every Footprints call and left 9,983 lots `pending`;
+that is what led to the 300-lot default, and the re-run that settled them is
+in the same file.
+
 ## Tests
 
 ```sh
 npm test                          # unit tests: no database, no network
-docker compose run api npm test   # adds the database-backed suites
+docker compose run --rm api npm test   # adds the database-backed suites
 ```
 
 Nothing ever calls the city from a test: GeoSearch and Socrata are replaced
