@@ -9,6 +9,7 @@
 // batches, and the next start continues it. Succeeded batches never refetch.
 
 import type pg from 'pg';
+import { withTransaction } from '../db/transaction.js';
 import type { SocrataClient } from '../socrata/fetch.js';
 import { ECB_DATASET, fetchViolations, type EcbRow, type FetchOptions } from './ecb-source.js';
 import { normalizeViolation, type NormalizedViolation } from './normalize.js';
@@ -127,8 +128,14 @@ async function openRun(db: pg.Pool, socrata: SocrataClient, opts: IngestOptions)
   } catch {
     // Provenance only; a run without it is still a valid run.
   }
-  const runId = await startRun(db, opts.trigger, sourceRowsUpdatedAt, socrata.stats().calls - callsBefore);
-  await insertBatches(db, runId, planBatches(await trackedProperties(db), opts.batchSize));
+  // Run row and its plan commit together: a run never exists without its batches.
+  const metadataCalls = socrata.stats().calls - callsBefore;
+  const plan = planBatches(await trackedProperties(db), opts.batchSize);
+  const runId = await withTransaction(db, async (client) => {
+    const id = await startRun(client, opts.trigger, sourceRowsUpdatedAt, metadataCalls);
+    await insertBatches(client, id, plan);
+    return id;
+  });
   return { run: (await getRun(db, runId))!, resumed: false };
 }
 

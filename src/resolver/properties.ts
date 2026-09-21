@@ -5,6 +5,7 @@
 // unresolved, so the caller gets an id and the input is never lost.
 
 import type pg from 'pg';
+import { withTransaction } from '../db/transaction.js';
 import type { Bbl } from './bbl.js';
 import type { LotBuilding } from './footprints.js';
 import type { PlutoLot } from './pluto.js';
@@ -106,20 +107,6 @@ async function recordInput(db: Queryable, input: InputRef, propertyId: string): 
   );
 }
 
-async function withTransaction<T>(db: pg.Pool, fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-  const client = await db.connect();
-  try {
-    await client.query('BEGIN');
-    const out = await fn(client);
-    await client.query('COMMIT');
-    return out;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
 
 export interface UpsertResult {
   property: Property;

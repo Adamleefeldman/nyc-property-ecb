@@ -5,6 +5,12 @@ local copy of that property's DOB ECB violations refreshed on a schedule, and
 serves them through our own API. Socrata is never called while answering a
 request.
 
+- `DESIGN.md` — why it is built this way: strategy, tables, idempotency,
+  coverage, what comes next.
+- `docs/verification.md` — the evidence: run logs, the 10,000-lot run, spot
+  checks against the city, the tests.
+- `docs/adding-a-dataset.md` — the recipe for the next dataset.
+
 ## Run it
 
 Needs Docker. Nothing else.
@@ -25,28 +31,17 @@ docker compose run --rm api npm run ingest
 `seed/addresses.json` holds seven real addresses, each with the reason it is
 there: 350 5th Avenue (the reference case), a hyphenated Queens number, a
 condo unit, one with an unpaid balance, two small 2-family houses (one with
-a single violation, one with none, so `checked` with an empty list is
-demonstrable), and a Bronx public building. The seed goes through the same
-resolver as `POST /properties`; running it twice creates nothing.
+a single violation, one with none), and a Bronx public building. The seed
+goes through the same resolver as `POST /properties`; running it twice
+creates nothing.
 
-## Scale run: 10,000 lots
+For 10,000 lots: `npm run import -- seed/scale-10k.csv` (Brooklyn CD 301
+from PLUTO), then `npm run ingest`. Measured: import 22 s, run 49 s, 44
+Socrata calls, 37,574 rows, 0 failures (`docs/verification.md`).
 
-`seed/scale-10k.csv` is the first 10,000 lots of Brooklyn community district
-301 (Williamsburg/Greenpoint), by BBL, pulled from PLUTO with `npm run
-seed:pluto` (the script is the provenance). Load and run:
-
-```sh
-docker compose run --rm api npm run import -- seed/scale-10k.csv
-docker compose run --rm api npm run ingest
-```
-
-Measured on 2026-09-20 (`runlogs/scale-10k.txt`): the import resolved
-10,000 lots in 22.5 s with 40 Building Footprints calls (9,462 with
-buildings, 521 vacant or placeholder-only, 17 condo unit lots); the run
-fetched 37,574 violations for 10,742 BINs in 49 s with 44 Socrata calls in
-18 batches, 0 failed. A second run over the same lots stores 0 new rows.
-`runlogs/kill-resume.txt` shows the same run killed after batch 5 and
-finished by the next start.
+Tests: `npm test` (no database, no network) or `docker compose run --rm api
+npm test` (adds the Postgres-backed suites). Nothing in a test calls the
+city.
 
 ## Change the schedule
 
@@ -56,7 +51,9 @@ The pipeline interval is an environment variable. Default is once a day.
 INGEST_INTERVAL=24h     # e.g. 6h, 30m
 ```
 
-Change it in `.env` and restart. No code changes.
+Change it in `.env` and restart. No code changes. Every other operational
+setting is an environment variable too (batch sizes, page size, retries,
+pacing, timeouts); `.env.example` lists them with their defaults.
 
 ## Run the pipeline now
 
@@ -66,8 +63,10 @@ Either:
 docker compose run --rm api npm run ingest
 ```
 
-or `POST /admin/ingest/run`. Both return the run's summary: wall time,
-Socrata calls made, rows stored, batches failed.
+or `POST /admin/ingest/run` (409 if a run is already going). Both return
+the run's summary: wall time, Socrata calls made, rows stored, batches
+failed. `GET /admin/ingest/runs` lists past runs. `GET /health` reports the
+database, the interval and the last successful run.
 
 ## Endpoints
 
@@ -82,14 +81,23 @@ POST /properties
 
 201
 {
-  "id": "…",
+  "id": "0e303e0f-f11e-422b-a470-891940124a3c",
   "bbl": "1008350041",
   "borough": 1, "block": "00835", "lot": "0041",
   "normalizedAddress": "350 5 AVENUE, MANHATTAN",
   "bins": ["1015862"],
-  "resolution": { "status": "resolved", "source": "geosearch", "at": "2026-09-17T14:02:11Z" }
+  "pluto": { "address": "338 5 AVENUE", "bldgclass": "O4", "unitsres": "0", "…": "…" },
+  "resolution": { "status": "resolved", "source": "geosearch", "at": "2026-09-20T12:15:51.034Z" }
 }
 ```
+
+201 created it, 200 found it, 202 stored it as `pending` because a city
+source was down (the record has `resolution.reason`; it is retried by the
+next `POST` or `npm run resolve:retry` and keeps its id). `bins` lists
+usable building IDs only. `pluto` is the city's one-address-per-lot record
+(the ESB lot is filed as 338 5 Avenue), kept for context; it is not the
+input. Lots registered by BBL carry no `pluto` block and no
+`normalizedAddress`; nothing is geocoded for them.
 
 ### Get a property
 
@@ -112,23 +120,35 @@ Every response says how fresh the data is and whether we actually checked:
 {
   "coverage": {
     "state": "checked",
-    "checkedAt": "2026-09-17T03:00:04Z",
-    "sourceUpdatedAt": "2026-09-16T17:00:00Z",
-    "runId": 42
+    "checkedAt": "2026-09-20T12:20:55.282Z",
+    "sourceUpdatedAt": "2026-09-19T16:59:06.000Z",
+    "runId": 4
   },
-  "items": [ { "ecbViolationNumber": "…", "issueDate": "2024-03-01", "status": "ACTIVE", "balanceDue": 1250.00, "…": "…" } ],
-  "nextCursor": "…"
+  "items": [
+    { "ecbViolationNumber": "39107427M", "bin": "1015862", "bbl": "1008350041",
+      "status": "RESOLVE", "issueDate": "2024-03-01", "hearingDate": "2024-05-09",
+      "hearingStatus": "ADMIT/IN-VIO", "severity": "CLASS - 1", "violationType": "Elevators",
+      "violationDescription": "HOIST CABLES DAMAGED. …", "respondentName": "ESRT EMPIRE STATE BUILDIN",
+      "penaltyImposed": 1250, "amountPaid": 1250, "balanceDue": 0,
+      "infractionCode": "151", "absentSinceRunId": null, "updatedAt": "2026-09-20T12:15:59.169Z", "…": "…" }
+  ],
+  "nextCursor": "eyJkIjoiMjAyNC0wMy0wMSIsIm4iOiIzOTEwNzQyN00ifQ"
 }
 ```
+
+`checkedAt` is when we asked the city; `sourceUpdatedAt` is when the city
+last updated the dataset (its own metadata). `updatedAt` on an item is when
+we stored it or its served values last changed. `absentSinceRunId` is set
+when a row the city used to return has disappeared; the row stays.
 
 `coverage.state` is one of:
 
 | state          | meaning                                                             |
 |----------------|---------------------------------------------------------------------|
 | `checked`      | We looked. `items` is the answer, even if it is empty.              |
-| `not_checked`  | Property is registered but the pipeline has not reached it yet.     |
-| `failed`       | Last attempt errored. `failedAt` and `error` say when and why.      |
-| `not_applicable` | Property has no usable building ID, so there is nothing to check. `reason` says why. |
+| `not_checked`  | Registered but no run has reached it yet, or its building lookup is still pending. `reason` says which. |
+| `failed`       | Last attempt errored. `failedAt` and `error` say when and why; `lastSuccessAt` when it last worked. Rows from that success are still served. |
+| `not_applicable` | No usable building ID (vacant lot, placeholder-only BINs, condo unit lot), so there is nothing to check. `reason` says why. |
 
 An empty `items` with `state: checked` means "no violations". An empty
 `items` with any other state means "we don't know yet".
@@ -166,49 +186,11 @@ row or its served values changed (`updatedAt` on each item), not the city's
 `balance_due > 0`, with `unpaidCount`, `unpaidTotal` and `activeCount` per
 property. Without the filter, every tracked property, by BBL.
 
-## Run logs
-
-`runlogs/` is untouched console output: `baseline.txt` (seed, first run),
-`second-run.txt` (same commands again: 0 new, 0 changed), `scale-10k.txt`
-(the import and the 10,000-lot run), `kill-resume.txt` (a run killed after
-batch 5, resumed by the next start). The first import in `scale-10k.txt`
-failed with HTTP 414 on every Footprints call and left 9,983 lots `pending`;
-that is what led to the 300-lot default, and the re-run that settled them is
-in the same file.
-
-## Tests
-
-```sh
-npm test                          # unit tests: no database, no network
-docker compose run --rm api npm test   # adds the database-backed suites
+```json
+{ "items": [ { "id": "e325fba0-…", "bbl": "1011147503", "normalizedAddress": "15 CENTRAL PARK WEST, MANHATTAN",
+               "resolutionStatus": "resolved", "bins": 2, "activeCount": 0, "unpaidCount": 1, "unpaidTotal": 2530 } ],
+  "nextCursor": "eyJiIjoiMTAxMTE0NzUwMyIs…" }
 ```
-
-Nothing ever calls the city from a test: GeoSearch and Socrata are replaced
-by fakes that serve captured responses (`src/*/fixtures/`) and can be
-switched into outage mode. The unit tests cover normalisation, the clients
-(retries, backoff, pacing, the 414 guard), the batch planner and cursors.
-The `*.integration.test.ts` suites run against a real Postgres, one
-throwaway database per file (`app_test_*`, never `app`), and prove the
-behaviours that only show in the database: the same lot in any spelling or
-by address is one record; a source outage leaves a `pending` row that a
-retry settles under the same id; the same rows ingested twice change
-nothing; a changed balance moves only that row's `updatedAt`; a row the
-city drops is flagged, not deleted; a failing batch makes the run `partial`
-and only its properties `failed`; a run that dies mid-way is resumed by the
-next one; every coverage state through the API; pages that never repeat or
-skip while rows are being inserted. Without a reachable Postgres those
-suites skip with a message rather than fail.
-
-## Where the IDs come from
-
-| Step                    | Source                         | Why                                                                                                                                                                       |
-|-------------------------|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| address → BBL + BIN     | NYC GeoSearch                  | The only free service that reads addresses. Its confidence score is always 0.8, so we check ourselves that the house number, street and borough match what was asked.     |
-| BBL → lot details       | PLUTO (64uk-42ks)              | One row per lot: borough, block, lot, building class, units. Also the source of the 10,000-lot scale seed.                                                                |
-| BBL → all BINs          | Building Footprints (5zhs-2jue)| The only source that lists every building on a lot. We query both `base_bbl` and `mappluto_bbl`, because for condos `base_bbl` is the ground lot and only `mappluto_bbl` carries the condo billing lot. |
-
-Violations are joined by BIN, never by block/lot, because block/lot padding
-is inconsistent in the ECB data (the same lot appears as `0041` and `00041`).
 
 ## Known limitations
 
@@ -240,66 +222,16 @@ without a lookup.
 **Rows without a BIN.** About 4,600 ECB rows have no BIN. They cannot be
 attached to any property and are not served.
 
+**Lots with no footprint.** Building Footprints has gaps (Madison Square
+Garden's lot has no row). Such a lot lands `not_applicable` with the reason
+`no buildings on lot (Building Footprints)`; DESIGN.md §5 has the fallback.
+
+**Lot-padding.** Counting ECB rows by block and lot undercounts (the same
+lot appears as `0041` and `00041`); we join by BIN. The numbers are in
+`docs/verification.md`.
+
 **No authentication.** `/admin/*` triggers work and exposes the run log;
 in production it would sit behind auth. Out of scope here.
-
-## Spot checks against the city
-
-Two properties checked against the city's own records on 2026-09-21. Our
-copy of the ECB dataset was last updated by the city on 2026-09-19
-(`coverage.sourceUpdatedAt`).
-
-**Against OATH, the hearings tribunal.** OATH keeps its own record of every
-ECB ticket (dataset `jz4z-kudi`, a different agency and a different system
-from DOB's ECB dataset, updated 2026-09-21), keyed by ticket number with its
-own balance, penalty and paid amounts. We looked up every ticket number we
-hold for each property (OATH pads them to 10 digits: our `39558924X` is its
-`039558924X`) and compared money row by row.
-
-| Property             | BIN     | Violations (ours) | Unpaid violations (ours) | Total balance owed (ours) | Tickets found in OATH | Unpaid violations (OATH) | Total balance owed (OATH) | Tickets whose balance differs | Match |
-|----------------------|---------|------------------:|-------------------------:|--------------------------:|----------------------:|-------------------------:|--------------------------:|------------------------------:|-------|
-| 350 5th Avenue (ESB) | 1015862 |               241 |                        0 |           -$3,060 (credit) |                   161 |                        0 |                   -$3,060 |                             0 | yes   |
-| 939 2nd Avenue       | 1038249 |                51 |                       21 |                  $434,250 |                    30 |                       21 |                  $434,250 |                             0 | yes   |
-
-"Unpaid violations" is how many of the property's tickets still have money
-owed (`balance_due > 0`). "Total balance owed" adds up `balance_due` over all
-the property's tickets, settled ones included. ESB's total is negative
-because two closed tickets were over-paid and carry a credit, which is also
-why ESB is not listed under `unpaid=true`: a credit is not a debt.
-
-Every ticket OATH has, we have, with the same balance to the dollar; the
-unpaid rows and totals are identical. The tickets OATH lacks are the old
-ones: for ESB all 80 missing were issued 1988–1999 and all 161 present were
-issued 2000 or later; for 939 2nd Avenue the 21 missing were issued 1993–95.
-OATH's public dataset simply starts later than DOB's, so the difference is
-coverage, not disagreement.
-
-**Against BIS (DOB's Building Information System).** The pages are
-[ESB](https://a810-bisweb.nyc.gov/bisweb/PropertyProfileOverviewServlet?bin=1015862)
-and [939 2nd Avenue](https://a810-bisweb.nyc.gov/bisweb/PropertyProfileOverviewServlet?bin=1038249);
-the "Violations-ECB" line shows open and total counts. BIS sits behind
-Akamai and returned 403 from every route we had on 2026-09-21 (a non-US
-home connection, a New York VPN exit, a US cloud fetch), so its cells are
-not filled in. It opens from a US residential connection; our expected
-values are 0 open / 241 total and 21 open / 51 total.
-
-**Why counting by lot gives a smaller number.** ECB rows carry the lot as
-typed over the years, sometimes 4 digits, sometimes 5. Counting by block and
-lot returns only one spelling; counting by BIN returns all of them. Both
-spot-check properties split this way:
-
-| Query on the ECB dataset                    | Rows |
-|---------------------------------------------|-----:|
-| ESB: `block='00835' and lot='0041'`         |   94 |
-| ESB: `block='00835' and lot='00041'`        |  147 |
-| ESB: `bin='1015862'`                        |  241 |
-| 939 2nd Ave: `block='01323' and lot='0128'` |   43 |
-| 939 2nd Ave: `block='01323' and lot='00128'`|    8 |
-| 939 2nd Ave: `bin='1038249'`                |   51 |
-
-94 + 147 = 241 and 43 + 8 = 51: the BIN join captures every row. This is
-why violations are attached to properties through `property_bins` and never
-by block/lot.
 
 ## Secrets
 
