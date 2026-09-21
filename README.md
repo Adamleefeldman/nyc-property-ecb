@@ -243,12 +243,63 @@ attached to any property and are not served.
 **No authentication.** `/admin/*` triggers work and exposes the run log;
 in production it would sit behind auth. Out of scope here.
 
-## Spot checks against BIS
+## Spot checks against the city
 
-| Property                | Our count | BIS Property Profile | Match |
-|-------------------------|-----------|----------------------|-------|
-| 350 5th Avenue (ESB)    | _TBD_     | _TBD_                | _TBD_ |
-| _second property_       | _TBD_     | _TBD_                | _TBD_ |
+Two properties checked against the city's own records on 2026-09-21. Our
+copy of the ECB dataset was last updated by the city on 2026-09-19
+(`coverage.sourceUpdatedAt`).
+
+**Against OATH, the hearings tribunal.** OATH keeps its own record of every
+ECB ticket (dataset `jz4z-kudi`, a different agency and a different system
+from DOB's ECB dataset, updated 2026-09-21), keyed by ticket number with its
+own balance, penalty and paid amounts. We looked up every ticket number we
+hold for each property (OATH pads them to 10 digits: our `39558924X` is its
+`039558924X`) and compared money row by row.
+
+| Property             | BIN     | Violations (ours) | Unpaid violations (ours) | Total balance owed (ours) | Tickets found in OATH | Unpaid violations (OATH) | Total balance owed (OATH) | Tickets whose balance differs | Match |
+|----------------------|---------|------------------:|-------------------------:|--------------------------:|----------------------:|-------------------------:|--------------------------:|------------------------------:|-------|
+| 350 5th Avenue (ESB) | 1015862 |               241 |                        0 |           -$3,060 (credit) |                   161 |                        0 |                   -$3,060 |                             0 | yes   |
+| 939 2nd Avenue       | 1038249 |                51 |                       21 |                  $434,250 |                    30 |                       21 |                  $434,250 |                             0 | yes   |
+
+"Unpaid violations" is how many of the property's tickets still have money
+owed (`balance_due > 0`). "Total balance owed" adds up `balance_due` over all
+the property's tickets, settled ones included. ESB's total is negative
+because two closed tickets were over-paid and carry a credit, which is also
+why ESB is not listed under `unpaid=true`: a credit is not a debt.
+
+Every ticket OATH has, we have, with the same balance to the dollar; the
+unpaid rows and totals are identical. The tickets OATH lacks are the old
+ones: for ESB all 80 missing were issued 1988–1999 and all 161 present were
+issued 2000 or later; for 939 2nd Avenue the 21 missing were issued 1993–95.
+OATH's public dataset simply starts later than DOB's, so the difference is
+coverage, not disagreement.
+
+**Against BIS (DOB's Building Information System).** The pages are
+[ESB](https://a810-bisweb.nyc.gov/bisweb/PropertyProfileOverviewServlet?bin=1015862)
+and [939 2nd Avenue](https://a810-bisweb.nyc.gov/bisweb/PropertyProfileOverviewServlet?bin=1038249);
+the "Violations-ECB" line shows open and total counts. BIS sits behind
+Akamai and returned 403 from every route we had on 2026-09-21 (a non-US
+home connection, a New York VPN exit, a US cloud fetch), so its cells are
+not filled in. It opens from a US residential connection; our expected
+values are 0 open / 241 total and 21 open / 51 total.
+
+**Why counting by lot gives a smaller number.** ECB rows carry the lot as
+typed over the years, sometimes 4 digits, sometimes 5. Counting by block and
+lot returns only one spelling; counting by BIN returns all of them. Both
+spot-check properties split this way:
+
+| Query on the ECB dataset                    | Rows |
+|---------------------------------------------|-----:|
+| ESB: `block='00835' and lot='0041'`         |   94 |
+| ESB: `block='00835' and lot='00041'`        |  147 |
+| ESB: `bin='1015862'`                        |  241 |
+| 939 2nd Ave: `block='01323' and lot='0128'` |   43 |
+| 939 2nd Ave: `block='01323' and lot='00128'`|    8 |
+| 939 2nd Ave: `bin='1038249'`                |   51 |
+
+94 + 147 = 241 and 43 + 8 = 51: the BIN join captures every row. This is
+why violations are attached to properties through `property_bins` and never
+by block/lot.
 
 ## Secrets
 
