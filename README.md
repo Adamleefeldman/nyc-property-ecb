@@ -49,9 +49,10 @@ Measured: import 43 s and 80 Socrata calls (40 PLUTO, 40 Footprints); run
 how fast the city answers that minute. Console output is in `runlogs/`, the
 details in `docs/verification.md`.
 
-Tests: `npm test` runs the unit tests with no database or network;
-`docker compose run --rm api npm test` adds the Postgres-backed suites. No
-test calls the city.
+Tests: `npm test` runs the unit tests with no database or network, and the
+Postgres-backed suites too when the stack is up; `docker compose run --rm api
+npm test` runs everything on Node 22 inside the container. No test calls the
+city.
 
 **Where the IDs come from.** NYC GeoSearch turns an address into a BBL and
 BIN; it is the only free service that reads addresses, but its confidence
@@ -95,14 +96,15 @@ A second trigger while a run is going returns 409 (exit code 2).
 POST /admin/ingest/run
 
 200
-{ "runId": 5, "status": "succeeded", "resumed": false, "wallMs": 49100,
-  "sourceRowsUpdatedAt": "2026-09-19T16:59:06.000Z", "socrataCalls": 44,
+{ "runId": 3, "status": "succeeded", "resumed": false, "wallMs": 71900,
+  "sourceUpdatedAt": "2026-09-19T16:59:06.000Z", "socrataCalls": 19,
   "batchesTotal": 18, "batchesFailed": 0, "rowsFetched": 37574, "rowsStored": 37574,
   "rowsNew": 37167, "rowsChanged": 0, "rowsAbsent": 0, "propertiesChecked": 9469 }
 ```
 
-`GET /admin/ingest/runs` lists past runs in the same shape. `GET /health`
-reports the database, the interval and the last successful run.
+`GET /admin/ingest/runs` lists past runs with the same counters plus the
+trigger, start and finish times, and the error if any. `GET /health` reports
+the database, the interval and the last successful run.
 
 ## Endpoints
 
@@ -188,9 +190,9 @@ disappeared: we keep it and flag it rather than delete it.
 
 ### Add properties in bulk
 
-`POST /properties/bulk` with up to 10,000 BBLs. The lots go in with one
-database statement, and PLUTO and Footprints are each asked about 300 lots
-per call. An invalid item fails alone. `npm run import -- file.csv` does the
+`POST /properties/bulk` with up to 10,000 BBLs. The lots go in as one insert,
+not one per lot, and PLUTO and Footprints are each asked about 300 lots per
+call. An invalid item fails alone. `npm run import -- file.csv` does the
 same from a file with a `bbl` column.
 
 ```json

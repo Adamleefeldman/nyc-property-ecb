@@ -106,7 +106,8 @@ docker compose run --rm api npm test   # adds the database-backed suites
 Nothing ever calls the city from a test: GeoSearch and Socrata are replaced
 by fakes that serve captured responses (`src/*/fixtures/`) and can be
 switched into outage mode. The unit tests cover normalisation, the clients
-(retries, backoff, pacing, the 414 guard), the batch planner and cursors.
+(retries, backoff, pacing, which HTTP statuses are retried), the batch
+planner, the interval parser and cursors.
 The `*.integration.test.ts` suites run against a real Postgres, one
 throwaway database per file (`app_test_*`, never `app`), and prove the
 behaviours that only show in the database: the same lot in any spelling or

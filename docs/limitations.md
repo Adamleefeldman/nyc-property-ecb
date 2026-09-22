@@ -39,9 +39,10 @@ Garden's lot has no row). Such a lot lands `not_applicable` with the reason
 `no buildings on lot (Building Footprints)`. DESIGN.md §5 has the fallback we
 would add.
 
-**Lots PLUTO does not have.** Condo unit lots, and 12 of the 10,000 scale
-lots, have no PLUTO address. A lot registered by BBL with no PLUTO row shows
-`normalizedAddress: null` until an address is sent for it.
+**Lots with no PLUTO address.** Condo unit lots have no PLUTO row at all,
+and 12 of the 10,000 scale lots have a row whose address is blank. Either
+way a lot registered by BBL shows `normalizedAddress: null` until an address
+is sent for it.
 
 **Lot padding.** Counting ECB rows by block and lot undercounts, because the
 same lot appears as `0041` and `00041`. We join by BIN. The numbers are in

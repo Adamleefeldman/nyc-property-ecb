@@ -48,7 +48,8 @@ export interface RunSummary {
   status: RunStatus;
   resumed: boolean;
   wallMs: number;
-  sourceRowsUpdatedAt: Date | null;
+  /** The city's own last-update time for the dataset; the same name the coverage envelope and the runs list use. */
+  sourceUpdatedAt: Date | null;
   socrataCalls: number;
   rowsFetched: number;
   rowsStored: number;
@@ -227,7 +228,7 @@ export async function runIngestion(db: pg.Pool, socrata: SocrataClient, opts: In
       status,
       resumed,
       wallMs: Date.now() - startedAt,
-      sourceRowsUpdatedAt: final.source_rows_updated_at,
+      sourceUpdatedAt: final.source_rows_updated_at,
       socrataCalls: final.socrata_calls,
       rowsFetched: final.rows_fetched,
       rowsStored: final.rows_stored,

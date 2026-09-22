@@ -6,7 +6,7 @@ is not touched.
 
 ## What is reused
 
-- `src/socrata/fetch.ts` — the client: pacing, retries, the 414 guard.
+- `src/socrata/fetch.ts` — the client: pacing, retries, timeouts, call counting.
 - `src/pipeline/planner.ts` — groups tracked BINs into batches.
 - `src/pipeline/ingest.ts` — run lock, batch plan, per-batch transaction,
   resume, partial status, counters.
@@ -55,8 +55,8 @@ whatever the dataset's "open" predicate is (HPD: `currentstatus <>
    { ...opts, source, normalize, upsert, dataset: 'hpd' })`) or do the
    adapter refactor DESIGN.md §5 describes first, which is the cleaner
    route. `startRun`, `markCovered`, `markCoverageFailed`,
-   `findUnfinishedRun` and `lastSuccessfulRunAt` get a `dataset` parameter
-   in place of the `'ecb'` default / literal.
+   `findUnfinishedRun`, `lastSuccessfulRunAt` and `listRuns` get a `dataset`
+   parameter in place of the `'ecb'` default / literal.
 6. `src/api/violations.ts`: copy the two ECB routes to
    `GET /properties/:id/hpd-violations` and `GET /hpd-violations`, pointing
    at the new table and its filters; `coverageFor` in `src/api/coverage.ts`
