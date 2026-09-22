@@ -24,7 +24,7 @@ export class PageLimitError extends Error {
   }
 }
 
-export function binsWhere(bins: string[]): string {
+function binsWhere(bins: string[]): string {
   return `bin in (${bins.map(soqlString).join(',')})`;
 }
 

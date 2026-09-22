@@ -77,9 +77,9 @@ INGEST_INTERVAL=24h     # e.g. 30m, 6h, 1d; at most 24d
 
 Set it in `.env` and restart. No code changes. On start the scheduler runs at
 once if the last successful run is older than the interval, or there was
-none, so a restart never skips a run. Every other operational setting (batch
-sizes, page size, retries, pacing, timeouts) is an environment variable too;
-`.env.example` lists them with their defaults.
+none and there are properties to scan, so a restart never skips a run. Every
+other operational setting (batch sizes, page size, retries, pacing, timeouts)
+is an environment variable too; `.env.example` lists them with their defaults.
 
 ## Run the pipeline now
 

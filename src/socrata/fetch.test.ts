@@ -61,7 +61,12 @@ describe('createSocrataClient', () => {
   it('turns a timeout into a retryable SocrataError', async () => {
     const impl = ((_url: string, init: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
-        init.signal!.addEventListener('abort', () => reject(init.signal!.reason));
+        // AbortSignal.timeout's own timer does not keep Node alive; this one does until the abort fires.
+        const keepAlive = setTimeout(() => {}, 1000);
+        init.signal!.addEventListener('abort', () => {
+          clearTimeout(keepAlive);
+          reject(init.signal!.reason);
+        });
       })) as typeof fetch;
     const client = createSocrataClient({ timeoutMs: 20, fetchImpl: impl });
     await assert.rejects(client.get('x', {}), (err: unknown) => {

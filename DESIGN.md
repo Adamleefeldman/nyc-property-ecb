@@ -56,7 +56,7 @@ datasets, watchlist the large transactional ones.
 
 ## 2. Storage layout
 
-Eight tables in four migrations (`src/db/migrations/`), applied on every
+Eight tables in five migrations (`src/db/migrations/`), applied on every
 boot under a database lock so two containers cannot race.
 
 | Table | One row per | Key | Holds |
@@ -82,7 +82,9 @@ inconsistently (`0041` and `00041` for one lot); only the BIN finds every row
 (counts in `docs/verification.md`). Three indexes match the three read
 paths: `(bin, issue_date DESC, number)` for a property's list,
 `(updated_at, number)` for the cross-property scan, and a partial index on
-`bin WHERE balance_due > 0` for the unpaid filter (about 9% of rows).
+`bin WHERE balance_due > 0` for the unpaid filter (about 9% of rows). A
+fourth, on `property_bins (bin)`, maps a violation back to its properties in
+the cross-property scan.
 
 ## 3. Idempotency and partial failure
 

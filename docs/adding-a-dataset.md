@@ -35,7 +35,7 @@ block/lot as ECB does, and compute `content_hash` over exactly the fields
 the API will serve. Return `null` for a row with no usable key. Unit-test
 it with two or three real rows in `src/pipeline/fixtures/hpd.ts`.
 
-### 3. A migration: `src/db/migrations/0005_hpd.sql`
+### 3. A migration: `src/db/migrations/0006_hpd.sql`
 
 Two tables with the same shape as `ecb_violations_raw` / `ecb_violations`:
 raw keyed on HPD's `violationid`, normalized keyed the same with an FK to
