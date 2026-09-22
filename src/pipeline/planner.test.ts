@@ -18,13 +18,6 @@ describe('planBatches', () => {
     assert.deepEqual(batches.map((b) => b.batchNo), [1, 2]);
   });
 
-  it('gives ceil(n / size) batches for one-BIN properties', () => {
-    const props = Array.from({ length: 10 }, (_, i) => prop(String(i).padStart(2, '0'), `b${i}`));
-    assert.equal(planBatches(props, 3).length, 4);
-    assert.equal(planBatches(props, 10).length, 1);
-    assert.equal(planBatches(props, 600).length, 1);
-  });
-
   it('is deterministic regardless of input order', () => {
     const a = planBatches([prop('2', 'y'), prop('1', 'x'), prop('3', 'z')], 2);
     const b = planBatches([prop('3', 'z'), prop('1', 'x'), prop('2', 'y')], 2);

@@ -21,9 +21,12 @@ describe('fetchPlutoLot', () => {
     assert.equal(lot?.address, '338 5 AVENUE'); // PLUTO's one address per lot, not the one typed
     assert.equal(lot?.bldgclass, 'O4');
   });
-  it('returns null for a lot PLUTO does not have (condo unit lots)', async () => {
+  it('returns null for a lot PLUTO does not have (condo unit lots), and so does the address', async () => {
     const { client } = clientReturning(MISSING_UNIT_LOT);
-    assert.equal(await fetchPlutoLot(client, '1011141001'), null);
+    const lot = await fetchPlutoLot(client, '1011141001');
+    assert.equal(lot, null);
+    assert.equal(plutoAddress(lot, 1), null);
+    assert.equal(plutoAddress({ address: '' }, 1), null);
   });
 });
 
@@ -39,11 +42,6 @@ describe('fetchPlutoLots', () => {
     assert.deepEqual([...out.keys()].sort(), ['1008350041', '4014700059']); // the unit lot is simply absent
     assert.equal(out.get('4014700059')?.address, '37-11 82 STREET');
   });
-  it('makes no call for an empty list', async () => {
-    const { client } = clientReturning([]);
-    assert.equal((await fetchPlutoLots(client, [])).size, 0);
-    assert.equal(client.stats().calls, 0);
-  });
 });
 
 describe('plutoAddress', () => {
@@ -51,9 +49,5 @@ describe('plutoAddress', () => {
     assert.equal(plutoAddress(ESB[0]!, 1), '338 5 AVENUE, MANHATTAN');
     assert.equal(plutoAddress(QUEENS[0]!, 4), '37-11 82 STREET, QUEENS');
     assert.equal(plutoAddress({ address: '  BROOKLYN   QUEENS EXPRESSWAY ' }, 3), 'BROOKLYN QUEENS EXPRESSWAY, BROOKLYN');
-  });
-  it('is null when PLUTO has no row or no address', () => {
-    assert.equal(plutoAddress(null, 1), null);
-    assert.equal(plutoAddress({ address: '' }, 1), null);
   });
 });

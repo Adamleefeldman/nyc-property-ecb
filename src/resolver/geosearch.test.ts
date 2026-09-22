@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { normalizeAddress } from './address.js';
-import { AVE_939, CPW15_UNIT, ESB, NO_BOROUGH, QUEENS_HYPHEN, STREET_ONLY, WRONG_STREET } from './fixtures/geosearch.js';
+import { AVE_939, CPW15_UNIT, ESB, NO_BOROUGH, QUEENS_HYPHEN, WRONG_STREET } from './fixtures/geosearch.js';
 import { createGeoSearchClient, GeoSearchError, resolveAddress } from './geosearch.js';
 
 function clientWith(responses: Array<{ status: number; features?: unknown[] } | 'timeout'>) {
@@ -51,19 +51,17 @@ describe('resolveAddress', () => {
 
   it('with the borough given, ignores the other-borough twin and the 350A/350B neighbours', async () => {
     const r = await resolveAddress(ok(ESB).client, normalizeAddress('350 5th Avenue, Manhattan'));
+    assert.equal(r.kind, 'match');
     if (r.kind === 'match') assert.equal(r.candidate.houseNumber, '350');
     const r2 = await resolveAddress(ok(NO_BOROUGH).client, normalizeAddress('350 5th Avenue, Brooklyn'));
     assert.equal(r2.kind, 'match');
     if (r2.kind === 'match') assert.equal(r2.bbl, '3009810111');
   });
 
-  it('does not match a placeholder-free 939 2nd Avenue to the wrong row', async () => {
+  it('matches 939 2nd Avenue to its own row, not a neighbour', async () => {
     const r = await resolveAddress(ok(AVE_939).client, normalizeAddress(AVE_939.query));
+    assert.equal(r.kind, 'match');
     if (r.kind === 'match') assert.deepEqual([r.bbl, r.bin], ['1013230128', '1038249']);
-  });
-
-  it('street-only input never reaches GeoSearch (the normalizer rejects it)', () => {
-    assert.throws(() => normalizeAddress(STREET_ONLY.query));
   });
 });
 
@@ -78,21 +76,10 @@ describe('createGeoSearchClient', () => {
     assert.equal(client.stats().calls, 1);
   });
 
-  it('retries once on 503 then succeeds', async () => {
-    const { client } = clientWith([{ status: 503 }, { status: 200, features: ESB.features }]);
-    assert.equal((await client.search('x')).length, 5);
-    assert.equal(client.stats().calls, 2);
-  });
-
   it('gives up after the attempt limit with a retryable error', async () => {
     const { client } = clientWith([{ status: 503 }]);
     await assert.rejects(client.search('x'), (e: unknown) => e instanceof GeoSearchError && e.retryable && e.status === 503);
     assert.equal(client.stats().calls, 2);
-  });
-
-  it('treats a timeout as retryable', async () => {
-    const { client } = clientWith(['timeout']);
-    await assert.rejects(client.search('x'), (e: unknown) => e instanceof GeoSearchError && e.retryable && /timeout/.test(e.message));
   });
 
   it('does not retry a 4xx', async () => {

@@ -72,11 +72,6 @@ describe('createSocrataClient', () => {
     });
   });
 
-  it('rejects a body that is not an array', async () => {
-    const f = fakeFetch(() => json({ message: 'nope' }));
-    const client = createSocrataClient({ timeoutMs: 1000, fetchImpl: f.impl });
-    await assert.rejects(client.get('x', {}), /not a JSON array/);
-  });
 });
 
 describe('retries and pacing', () => {

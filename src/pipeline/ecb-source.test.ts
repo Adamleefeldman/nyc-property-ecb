@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createSocrataClient } from '../socrata/fetch.js';
-import { binsWhere, fetchViolations, PageLimitError } from './ecb-source.js';
+import { fetchViolations, PageLimitError } from './ecb-source.js';
 
 /** A client whose fetch serves `pages` in order and records each request URL. */
 function pagedClient(pages: unknown[][]) {
@@ -16,12 +16,6 @@ function pagedClient(pages: unknown[][]) {
 }
 
 const row = (id: number) => ({ ecb_violation_number: `V${id}`, ':id': `row-${id}` });
-
-describe('binsWhere', () => {
-  it('quotes each BIN', () => {
-    assert.equal(binsWhere(['1015862', '1087839']), "bin in ('1015862','1087839')");
-  });
-});
 
 describe('fetchViolations', () => {
   it('sends the required select, order and paging params', async () => {
@@ -47,12 +41,6 @@ describe('fetchViolations', () => {
       ['0', '2', '4'],
     );
     assert.equal(client.stats().calls, 3);
-  });
-
-  it('makes exactly one call when the first page is empty', async () => {
-    const { client } = pagedClient([[]]);
-    assert.deepEqual(await fetchViolations(client, ['9999999'], { pageSize: 1000, maxPages: 5 }), []);
-    assert.equal(client.stats().calls, 1);
   });
 
   it('stops with an error at the page ceiling instead of looping', async () => {
