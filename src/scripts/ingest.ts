@@ -26,7 +26,8 @@ try {
   });
   console.log(formatSummary(summary));
   await pool.end();
-  process.exit(summary.status === 'failed' ? 1 : 0);
+  // 0 succeeded, 3 partial (some batches failed), 1 failed; 2 below when a run was already going.
+  process.exit(summary.status === 'failed' ? 1 : summary.status === 'partial' ? 3 : 0);
 } catch (err) {
   if (err instanceof RunInProgressError) {
     console.error('ingest: a run is already in progress; not starting another');

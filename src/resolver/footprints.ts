@@ -4,7 +4,7 @@
 
 import { soqlString, type SocrataClient } from '../socrata/fetch.js';
 
-export const FOOTPRINTS_DATASET = '5zhs-2jue';
+const FOOTPRINTS_DATASET = '5zhs-2jue';
 
 export interface LotBuilding {
   bin: string;

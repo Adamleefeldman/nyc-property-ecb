@@ -7,7 +7,10 @@ const INTERVAL_UNITS: Record<string, number> = {
   d: 86_400_000,
 };
 
-/** Parse "30m" | "6h" | "24h" | "1d" into milliseconds. Throws on anything else. */
+/** Node timers cannot count past 2^31-1 ms (~24.8 days); above that setInterval silently fires every millisecond. */
+const MAX_INTERVAL_MS = 24 * 86_400_000;
+
+/** Parse "30m" | "6h" | "24h" | "1d" into milliseconds. Throws on anything else, or on more than 24d. */
 export function parseInterval(raw: string): number {
   const match = /^(\d+)([mhd])$/.exec(raw.trim());
   if (!match) {
@@ -16,7 +19,9 @@ export function parseInterval(raw: string): number {
   const amount = Number(match[1]);
   const unit = INTERVAL_UNITS[match[2]!]!;
   if (amount <= 0) throw new Error(`INGEST_INTERVAL must be positive (got "${raw}")`);
-  return amount * unit;
+  const ms = amount * unit;
+  if (ms > MAX_INTERVAL_MS) throw new Error(`INGEST_INTERVAL must be 24d or less (got "${raw}")`);
+  return ms;
 }
 
 function parsePort(raw: string): number {
@@ -62,13 +67,13 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const ingestInterval = env.INGEST_INTERVAL ?? '24h';
   return {
-    databaseUrl: env.DATABASE_URL ?? 'postgres://app:app@localhost:5432/app',
+    databaseUrl: env.DATABASE_URL ?? 'postgres://app:app@localhost:5433/app', // 5433: the port docker compose publishes
     port: parsePort(env.PORT ?? '3000'),
     socrataAppToken: env.SOCRATA_APP_TOKEN || undefined,
     socrataTimeoutMs: parsePositiveInt('SOCRATA_TIMEOUT_MS', env.SOCRATA_TIMEOUT_MS ?? '15000'),
     geosearchTimeoutMs: parsePositiveInt('GEOSEARCH_TIMEOUT_MS', env.GEOSEARCH_TIMEOUT_MS ?? '10000'),
     geosearchAttempts: parsePositiveInt('GEOSEARCH_ATTEMPTS', env.GEOSEARCH_ATTEMPTS ?? '2'),
-    ecbPageSize: parsePositiveInt('ECB_PAGE_SIZE', env.ECB_PAGE_SIZE ?? '1000'),
+    ecbPageSize: parsePositiveInt('ECB_PAGE_SIZE', env.ECB_PAGE_SIZE ?? '5000'),
     maxPagesPerBatch: parsePositiveInt('MAX_PAGES_PER_BATCH', env.MAX_PAGES_PER_BATCH ?? '50'),
     batchSize: parsePositiveInt('BATCH_SIZE', env.BATCH_SIZE ?? '600'),
     footprintsBatchSize: parsePositiveInt('FOOTPRINTS_BATCH_SIZE', env.FOOTPRINTS_BATCH_SIZE ?? '300'),

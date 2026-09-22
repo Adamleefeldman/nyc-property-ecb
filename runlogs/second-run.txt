@@ -2,8 +2,8 @@ $ docker compose run --rm api npm run seed
  Container nyc-property-ecb-postgres-1 Running 
  Container nyc-property-ecb-postgres-1 Waiting 
  Container nyc-property-ecb-postgres-1 Healthy 
- Container nyc-property-ecb-api-run-8c9653987ee2 Creating 
- Container nyc-property-ecb-api-run-8c9653987ee2 Created 
+ Container nyc-property-ecb-api-run-8fd4386b173a Creating 
+ Container nyc-property-ecb-api-run-8fd4386b173a Created 
 
 > nyc-property-ecb@0.1.0 seed
 > tsx src/scripts/seed.ts
@@ -21,10 +21,11 @@ $ docker compose run --rm api npm run ingest
  Container nyc-property-ecb-postgres-1 Running 
  Container nyc-property-ecb-postgres-1 Waiting 
  Container nyc-property-ecb-postgres-1 Healthy 
- Container nyc-property-ecb-api-run-5af17caebbde Creating 
- Container nyc-property-ecb-api-run-5af17caebbde Created 
+ Container nyc-property-ecb-api-run-fa9ff58508c2 Creating 
+ Container nyc-property-ecb-api-run-fa9ff58508c2 Created 
 
 > nyc-property-ecb@0.1.0 ingest
 > tsx src/scripts/ingest.ts
 
-run 2 succeeded in 1.5s: 2 Socrata calls, 1 batches (0 failed), 407 rows fetched, 407 stored (0 new, 0 changed, 0 absent), 7 properties checked
+run 2 succeeded in 1.8s: 2 Socrata calls, 1 batches (0 failed), 407 rows fetched, 407 stored (0 new, 0 changed, 0 absent), 7 properties checked
+

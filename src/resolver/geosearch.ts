@@ -13,7 +13,6 @@ export interface GeoCandidate {
   borough: number | null;
   bbl: string | null;
   bin: string | null;
-  padVersion: string | null;
 }
 
 export interface GeoSearchClient {
@@ -47,7 +46,7 @@ interface RawFeature {
     housenumber?: string;
     street?: string;
     borough?: string;
-    addendum?: { pad?: { bbl?: string; bin?: string; version?: string } };
+    addendum?: { pad?: { bbl?: string; bin?: string } };
   };
 }
 
@@ -61,7 +60,6 @@ function toCandidate(f: RawFeature): GeoCandidate {
     borough: p.borough ? boroughFromText(p.borough) : null,
     bbl: pad.bbl ?? null,
     bin: pad.bin ?? null,
-    padVersion: pad.version ?? null,
   };
 }
 

@@ -10,7 +10,7 @@ import type pg from 'pg';
 const MIGRATIONS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations');
 const LOCK_KEY = 7_364_001; // arbitrary, just has to be the same in every process
 
-export async function listMigrationFiles(): Promise<string[]> {
+async function listMigrationFiles(): Promise<string[]> {
   const names = (await readdir(MIGRATIONS_DIR)).filter((n) => n.endsWith('.sql'));
   return names.sort();
 }

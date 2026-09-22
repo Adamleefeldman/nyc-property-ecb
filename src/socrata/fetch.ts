@@ -7,7 +7,6 @@ export interface SocrataClient {
   /** The dataset's own last-update time, from /api/views/<id>.json (rowsUpdatedAt). */
   getRowsUpdatedAt(dataset: string): Promise<Date | null>;
   stats(): { calls: number };
-  resetStats(): void;
 }
 
 export interface SocrataClientOptions {
@@ -113,8 +112,5 @@ export function createSocrataClient(opts: SocrataClientOptions): SocrataClient {
       return typeof body.rowsUpdatedAt === 'number' ? new Date(body.rowsUpdatedAt * 1000) : null;
     },
     stats: () => ({ calls }),
-    resetStats: () => {
-      calls = 0;
-    },
   };
 }

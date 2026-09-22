@@ -6,7 +6,7 @@ import { getTestDb, SKIP_REASON } from '../test/db.js'; // first: points DATABAS
 import assert from 'node:assert/strict';
 import { after, beforeEach, describe, it } from 'node:test';
 import { CPW15_BILLING, ESB, VACANT } from './fixtures/footprints.js';
-import { ESB as PLUTO_ESB } from './fixtures/pluto.js';
+import { ESB as PLUTO_ESB, QUEENS as PLUTO_QUEENS } from './fixtures/pluto.js';
 import { fakeCity } from '../test/fakes.js';
 
 const db = await getTestDb();
@@ -21,8 +21,8 @@ describe('resolver (integration)', { skip: db ? false : SKIP_REASON }, () => {
   beforeEach(() => db!.reset());
   after(() => db!.close());
 
-  it('three spellings of one BBL → one property, three input rows, one Footprints call', async () => {
-    const city = fakeCity({ footprintRows });
+  it('three spellings of one BBL → one property, three input rows, one PLUTO + one Footprints call', async () => {
+    const city = fakeCity({ footprintRows, plutoRows: PLUTO_ESB });
     const a = await registerByBbl(pool, city, '1008350041');
     const b = await registerByBbl(pool, city, '1-00835-0041');
     const c = await registerByBbl(pool, city, '1008350041.00000000');
@@ -32,7 +32,9 @@ describe('resolver (integration)', { skip: db ? false : SKIP_REASON }, () => {
     assert.equal(new Set([a.property.id, b.property.id, c.property.id]).size, 1);
     assert.deepEqual(a.property.bins, ['1015862']);
     assert.equal(a.property.resolution.status, 'resolved');
-    assert.equal(city.socrata.stats().calls, 1);
+    assert.equal(a.property.normalizedAddress, '338 5 AVENUE, MANHATTAN'); // PLUTO's address: the lot came as a BBL
+    assert.equal(a.property.addressSource, 'pluto');
+    assert.equal(city.socrata.stats().calls, 2); // repeats are served from the store
     const { rows } = await pool.query('SELECT count(*)::int AS n FROM property_inputs');
     assert.equal(rows[0].n, 3);
   });
@@ -43,8 +45,10 @@ describe('resolver (integration)', { skip: db ? false : SKIP_REASON }, () => {
     const byAddr = await registerByAddress(pool, city, '350 5th Avenue, Manhattan');
     assert.equal(byAddr.httpStatus, 200);
     assert.equal(byAddr.property.id, byBbl.property.id);
-    assert.equal(byAddr.property.normalizedAddress, '350 5 AVENUE, MANHATTAN');
-    assert.equal(byAddr.property.pluto?.address, '338 5 AVENUE'); // PLUTO's one address per lot
+    assert.equal(byBbl.property.normalizedAddress, '338 5 AVENUE, MANHATTAN'); // by BBL: PLUTO's address
+    assert.equal(byAddr.property.normalizedAddress, '350 5 AVENUE, MANHATTAN'); // once typed, the typed one wins
+    assert.equal(byAddr.property.addressSource, 'input');
+    assert.equal(byAddr.property.pluto?.address, '338 5 AVENUE'); // PLUTO's one address per lot, still kept
     assert.equal(city.geosearch.stats().calls, 1);
     await registerByAddress(pool, city, '  350 5TH AVE, manhattan ');
     assert.equal(city.geosearch.stats().calls, 1); // served from property_inputs
@@ -104,21 +108,27 @@ describe('resolver (integration)', { skip: db ? false : SKIP_REASON }, () => {
     assert.deepEqual(vacant.property.bins, []);
   });
 
-  it('bulk: one statement for the lots, one Footprints call per 500, counts and per-item failures', async () => {
-    const city = fakeCity({ footprintRows });
-    await registerByBbl(pool, city, '1008350041'); // already known
-    const r = await registerBulkByBbl(pool, city.socrata, ['1008350041', '1-00835-0041', '1011147503', VACANT.bbl, '1011141001', 'nope'], {
-      footprintsBatchSize: 500,
-    });
+  it('bulk: one statement for the lots, one PLUTO and one Footprints call per 500, counts and per-item failures', async () => {
+    const city = fakeCity({ footprintRows, plutoRows: [...PLUTO_ESB, ...PLUTO_QUEENS] });
+    await registerByBbl(pool, city, '1008350041'); // already known, with its PLUTO facts
+    const r = await registerBulkByBbl(
+      pool,
+      city.socrata,
+      ['1008350041', '1-00835-0041', '1011147503', VACANT.bbl, '1011141001', 'nope', '4014700059'],
+      { footprintsBatchSize: 500 },
+    );
     assert.deepEqual(
       [r.received, r.distinct, r.created, r.existing, r.failed],
-      [6, 4, 3, 1, 1],
+      [7, 5, 4, 1, 1],
     );
-    assert.deepEqual(r.byStatus, { resolved: 2, not_applicable: 1, unresolved: 1, pending: 0 });
+    assert.deepEqual(r.byStatus, { resolved: 2, not_applicable: 2, unresolved: 1, pending: 0 });
+    assert.equal(r.plutoCalls, 1); // the known lot already had its facts; the condo unit lot is never asked
     assert.equal(r.footprintsCalls, 1);
+    const queens = (await pool.query(`SELECT pluto->>'address' AS a FROM properties WHERE bbl = '4014700059'`)).rows[0].a;
+    assert.equal(queens, '37-11 82 STREET'); // filled by the bulk PLUTO call
     assert.equal(r.failures[0]!.bbl, 'nope');
     assert.equal(city.geosearch.stats().calls, 0);
     const { rows } = await pool.query('SELECT count(*)::int AS n FROM property_inputs');
-    assert.equal(rows[0].n, 5); // every valid spelling recorded, including the duplicate one
+    assert.equal(rows[0].n, 6); // every valid spelling recorded, including the duplicate one
   });
 });

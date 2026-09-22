@@ -23,8 +23,21 @@ describe('normalizeStreet', () => {
     assert.equal(normalizeStreet('Seven Avenue'), 'SEVEN AVENUE'); // cardinal without an ordinal ending: not a street number
     assert.equal(normalizeStreet('Fifth Avenue'), normalizeStreet('5 AVENUE'));
   });
+  it('expands abbreviations only where they mean a street type or a direction', () => {
+    assert.equal(normalizeStreet('Avenue N'), 'AVENUE N'); // Brooklyn's lettered avenues
+    assert.equal(normalizeStreet('Ave S'), 'AVENUE S');
+    assert.equal(normalizeStreet('Ave X'), 'AVENUE X');
+    assert.equal(normalizeStreet('Park Ave S'), 'PARK AVENUE SOUTH');
+    assert.equal(normalizeStreet('Central Park W'), 'CENTRAL PARK WEST');
+    assert.equal(normalizeStreet('St Nicholas Ave'), 'ST NICHOLAS AVENUE'); // Saint, as PAD writes it
+    assert.equal(normalizeStreet('St Marks Pl'), 'ST MARKS PLACE');
+    assert.equal(normalizeStreet('Dr Martin Luther King Jr Blvd'), 'DR MARTIN LUTHER KING JR BOULEVARD');
+    assert.equal(normalizeStreet('E 4th St'), 'EAST 4 STREET');
+  });
   it('is idempotent on PAD form', () => {
-    for (const s of ['5 AVENUE', '82 STREET', 'GILDERSLEEVE AVENUE']) assert.equal(normalizeStreet(s), s);
+    for (const s of ['5 AVENUE', '82 STREET', 'GILDERSLEEVE AVENUE', 'AVENUE N', 'ST NICHOLAS AVENUE', 'PARK AVENUE SOUTH']) {
+      assert.equal(normalizeStreet(s), s);
+    }
   });
 });
 
@@ -58,6 +71,17 @@ describe('normalizeAddress', () => {
     assert.equal(normalizeAddress('350 5th Avenue Brooklyn').borough, 3);
     assert.equal(normalizeAddress('37-15 82nd St, QN').borough, 4);
     assert.equal(normalizeAddress('10 Richmond Terrace, Staten Island, NY').borough, 5);
+  });
+
+  it('treats NY as the state and places a neighbourhood by its ZIP', () => {
+    const a = normalizeAddress('37-15 82nd Street, Jackson Heights, NY 11372');
+    assert.deepEqual([a.borough, a.normalized], [4, '37-15 82 STREET, QUEENS']);
+    assert.equal(a.inputKey, normalizeAddress('37-15 82nd Street, Queens').inputKey); // one property, one cache entry
+    assert.equal(normalizeAddress('123 Bedford Avenue, Williamsburg, NY 11211').borough, 3);
+    assert.equal(normalizeAddress('50-47 69th Street, Woodside, New York 11377').borough, 4); // ZIP outranks "New York"
+    assert.equal(normalizeAddress('350 5th Avenue, New York').borough, 1); // postal convention
+    assert.equal(normalizeAddress('1 Main Street, NY').borough, null); // state alone says nothing; GeoSearch decides
+    assert.equal(normalizeAddress('1 Main Street, Nowhere, NY 11040').borough, null); // 110xx is not borough-specific
   });
 
   it('has no borough and no borough suffix when none is given', () => {

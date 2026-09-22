@@ -1,27 +1,29 @@
-# A run over the 10,007 properties (18 batches), killed by the test knob after batch 5 (simulates the process dying):
+# A run over the 10,007 tracked properties (18 batches), killed by the test knob after batch 5 (simulates the process dying):
 $ docker compose run --rm -e INGEST_KILL_AFTER_BATCH=5 api npm run ingest
  Container nyc-property-ecb-postgres-1 Running 
  Container nyc-property-ecb-postgres-1 Waiting 
  Container nyc-property-ecb-postgres-1 Healthy 
- Container nyc-property-ecb-api-run-78ad6c84c7fc Creating 
- Container nyc-property-ecb-api-run-78ad6c84c7fc Created 
+ Container nyc-property-ecb-api-run-296aa0abf7e3 Creating 
+ Container nyc-property-ecb-api-run-296aa0abf7e3 Created 
 
 > nyc-property-ecb@0.1.0 ingest
 > tsx src/scripts/ingest.ts
 
 INGEST_KILL_AFTER_BATCH=5: exiting mid-run (test knob)
 
+
 exit code: 137
 
-# The next start finds the unfinished run and continues from batch 6:
+# The next start finds the unfinished run and continues from batch 6; the counters include the five batches the dead process finished:
 $ docker compose run --rm api npm run ingest
  Container nyc-property-ecb-postgres-1 Running 
  Container nyc-property-ecb-postgres-1 Waiting 
  Container nyc-property-ecb-postgres-1 Healthy 
- Container nyc-property-ecb-api-run-826f19d87bd1 Creating 
- Container nyc-property-ecb-api-run-826f19d87bd1 Created 
+ Container nyc-property-ecb-api-run-98cac1422e36 Creating 
+ Container nyc-property-ecb-api-run-98cac1422e36 Created 
 
 > nyc-property-ecb@0.1.0 ingest
 > tsx src/scripts/ingest.ts
 
-run 4 (resumed) succeeded in 30.7s: 44 Socrata calls, 18 batches (0 failed), 37574 rows fetched, 37574 stored (0 new, 0 changed, 0 absent), 9469 properties checked
+run 4 (resumed) succeeded in 39.3s: 19 Socrata calls, 18 batches (0 failed), 37574 rows fetched, 37574 stored (0 new, 0 changed, 0 absent), 9469 properties checked
+

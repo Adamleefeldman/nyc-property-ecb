@@ -14,23 +14,29 @@ docker compose run --rm api npm run import -- seed/scale-10k.csv
 docker compose run --rm api npm run ingest
 ```
 
-Measured on 2026-09-20 (`../runlogs/scale-10k.txt`): the import resolved
-10,000 lots in 22.5 s with 40 Building Footprints calls (9,462 with
-buildings, 521 vacant or placeholder-only, 17 condo unit lots); the run
-fetched 37,574 violations for 10,742 BINs in 49 s with 44 Socrata calls in
-18 batches, 0 failed. A second run over the same lots stores 0 new rows.
-`../runlogs/kill-resume.txt` shows the same run killed after batch 5 and
-finished by the next start.
+Measured on 2026-09-22 (`../runlogs/scale-10k.txt`): the import resolved
+10,000 lots in 43 s with 40 PLUTO calls and 40 Building Footprints calls
+(9,462 with buildings, 521 vacant or placeholder-only, 17 condo unit lots;
+9,983 lots got PLUTO facts, since the condo unit lots are never asked). The
+run fetched 37,574 violations for 10,742 BINs with 19 Socrata calls in 18
+batches, 0 failed, in 72 s. Two more runs the same morning took 44 s at the
+same 19 calls, and 78 s at the old 1,000-row page size (44 calls): the
+city's response time varies more than our call count does, and the larger
+page is faster on both counts. A second run over the same lots stores 0 new
+rows. `../runlogs/kill-resume.txt` shows the same run killed after batch 5
+and finished by the next start.
 
 ## Run logs
 
-`../runlogs/` is untouched console output: `baseline.txt` (seed, first run),
+`../runlogs/` is untouched console output, recorded on 2026-09-22 from a
+fresh database with the final code: `baseline.txt` (seed, first run),
 `second-run.txt` (same commands again: 0 new, 0 changed), `scale-10k.txt`
 (the import and the 10,000-lot run), `kill-resume.txt` (a run killed after
-batch 5, resumed by the next start). The first import in `scale-10k.txt`
-failed with HTTP 414 on every Footprints call and left 9,983 lots `pending`;
-that is what led to the 300-lot default, and the re-run that settled them is
-in the same file.
+batch 5, resumed by the next start). History worth keeping: the first-ever
+10,000-lot import (2026-09-20) ran with a 500-lot Footprints batch, got
+HTTP 414 on every call and left 9,983 lots `pending`; nothing was lost,
+lowering the default to 300 and re-running settled them, and that is why
+the default is 300.
 
 ## Spot checks against the city
 
@@ -118,7 +124,7 @@ suites skip with a message rather than fail.
 | Step                    | Source                         | Why                                                                                                                                                                       |
 |-------------------------|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | address → BBL + BIN     | NYC GeoSearch                  | The only free service that reads addresses. Its confidence score is always 0.8, so we check ourselves that the house number, street and borough match what was asked.     |
-| BBL → lot details       | PLUTO (64uk-42ks)              | One row per lot: borough, block, lot, building class, units. Also the source of the 10,000-lot scale seed.                                                                |
+| BBL → lot details       | PLUTO (64uk-42ks)              | One row per lot: borough, block, lot, building class, units, and the lot's official address, which is the `normalizedAddress` of a lot registered by BBL. Also the source of the 10,000-lot scale seed. |
 | BBL → all BINs          | Building Footprints (5zhs-2jue)| The only source that lists every building on a lot. We query both `base_bbl` and `mappluto_bbl`, because for condos `base_bbl` is the ground lot and only `mappluto_bbl` carries the condo billing lot. |
 
 Violations are joined by BIN, never by block/lot, because block/lot padding

@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../db/pool.js';
 import { resolverDeps } from '../resolver/index.js';
-import { getProperty } from '../resolver/properties.js';
+import { displayAddress, getProperty } from '../resolver/properties.js';
 import { registerByAddress, registerByBbl } from '../resolver/resolve.js';
-import { decodeCursor, encodeCursor } from './cursor.js';
+import { cursorBbl, cursorUuid, decodeCursor, encodeCursor } from './cursor.js';
 import { badRequest, notFound } from './errors.js';
 
 const createBody = {
@@ -28,7 +28,9 @@ const listQuery = {
 interface PropertyListRow {
   id: string;
   bbl: string | null;
+  borough: number | null;
   normalized_address: string | null;
+  pluto_address: string | null;
   resolution_status: string;
   bin_count: number;
   unpaid_count: number;
@@ -62,7 +64,7 @@ export async function propertyRoutes(app: FastifyInstance) {
       if (req.query.unpaid) where.push('u.unpaid_count > 0');
       if (req.query.cursor) {
         // Keyset on (bbl NULLS LAST, id): lot-less pending / unresolved rows come last.
-        const { b, i } = decodeCursor(req.query.cursor, ['b', 'i'] as const);
+        const { b, i } = decodeCursor(req.query.cursor, { b: cursorBbl, i: cursorUuid });
         if (i === null) throw badRequest('invalid cursor');
         if (b === null) {
           params.push(i);
@@ -73,7 +75,7 @@ export async function propertyRoutes(app: FastifyInstance) {
         }
       }
       const { rows } = await pool.query<PropertyListRow>(
-        `SELECT p.id, p.bbl, p.normalized_address, p.resolution_status,
+        `SELECT p.id, p.bbl, p.borough, p.normalized_address, p.pluto->>'address' AS pluto_address, p.resolution_status,
                 (SELECT count(*) FROM property_bins b WHERE b.property_id = p.id AND NOT b.is_placeholder)::int AS bin_count,
                 u.unpaid_count, u.unpaid_total, u.active_count
            FROM properties p
@@ -93,9 +95,9 @@ export async function propertyRoutes(app: FastifyInstance) {
         items: rows.map((r) => ({
           id: r.id,
           bbl: r.bbl,
-          normalizedAddress: r.normalized_address,
+          ...displayAddress(r.normalized_address, r.pluto_address ? { address: r.pluto_address } : null, r.borough),
           resolutionStatus: r.resolution_status,
-          bins: r.bin_count,
+          binCount: r.bin_count,
           activeCount: r.active_count,
           unpaidCount: r.unpaid_count,
           unpaidTotal: Number(r.unpaid_total),

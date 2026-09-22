@@ -8,7 +8,7 @@ import type pg from 'pg';
 import { withTransaction } from '../db/transaction.js';
 import type { Bbl } from './bbl.js';
 import type { LotBuilding } from './footprints.js';
-import type { PlutoLot } from './pluto.js';
+import { plutoAddress, type PlutoLot } from './pluto.js';
 
 export type ResolutionStatus = 'resolved' | 'unresolved' | 'pending' | 'not_applicable';
 export type InputKind = 'bbl' | 'address';
@@ -20,7 +20,9 @@ export interface Property {
   borough: number | null;
   block: string | null;
   lot: string | null;
+  /** The typed address, normalized; for a lot registered by BBL, PLUTO's official address for the lot. */
   normalizedAddress: string | null;
+  addressSource: 'input' | 'pluto' | null;
   /** Usable BINs only; placeholders (…000000) are stored but not listed. */
   bins: string[];
   pluto: PlutoLot | null;
@@ -56,6 +58,17 @@ const PROPERTY_SELECT = `
   FROM properties p
 `;
 
+/** A typed address wins; PLUTO's fills in for lots that only ever came as a BBL. */
+export function displayAddress(
+  normalizedInput: string | null,
+  pluto: PlutoLot | null,
+  borough: number | null,
+): { normalizedAddress: string | null; addressSource: 'input' | 'pluto' | null } {
+  if (normalizedInput) return { normalizedAddress: normalizedInput, addressSource: 'input' };
+  const fromPluto = plutoAddress(pluto, borough);
+  return fromPluto ? { normalizedAddress: fromPluto, addressSource: 'pluto' } : { normalizedAddress: null, addressSource: null };
+}
+
 function toProperty(row: PropertyRow): Property {
   return {
     id: row.id,
@@ -63,7 +76,7 @@ function toProperty(row: PropertyRow): Property {
     borough: row.borough,
     block: row.block,
     lot: row.lot,
-    normalizedAddress: row.normalized_address,
+    ...displayAddress(row.normalized_address, row.pluto, row.borough),
     bins: row.bins ?? [],
     pluto: row.pluto,
     resolution: {
@@ -79,6 +92,12 @@ type Queryable = pg.Pool | pg.PoolClient;
 
 export async function getProperty(db: Queryable, id: string): Promise<Property | null> {
   const { rows } = await db.query<PropertyRow>(`${PROPERTY_SELECT} WHERE p.id = $1`, [id]);
+  return rows[0] ? toProperty(rows[0]) : null;
+}
+
+/** The lot itself, whatever input created it. */
+export async function findByBbl(db: Queryable, bbl: string): Promise<Property | null> {
+  const { rows } = await db.query<PropertyRow>(`${PROPERTY_SELECT} WHERE p.bbl = $1`, [bbl]);
   return rows[0] ? toProperty(rows[0]) : null;
 }
 
@@ -277,6 +296,7 @@ export interface BulkUpsertRow {
   created: boolean;
   resolution_status: ResolutionStatus;
   has_bins: boolean;
+  has_pluto: boolean;
 }
 
 /** Insert-or-return every lot in one round trip and record all their inputs in another. */
@@ -289,7 +309,8 @@ export async function upsertLotsBulk(db: pg.Pool, lots: BulkLot[]): Promise<Bulk
          FROM jsonb_to_recordset($1::jsonb) AS l(bbl char(10), borough smallint, block char(5), lot char(4), status text, reason text)
        ON CONFLICT (bbl) DO UPDATE SET updated_at = properties.updated_at
        RETURNING id, bbl, (xmax = 0) AS created, resolution_status,
-                 EXISTS (SELECT 1 FROM property_bins b WHERE b.property_id = properties.id) AS has_bins`,
+                 EXISTS (SELECT 1 FROM property_bins b WHERE b.property_id = properties.id) AS has_bins,
+                 (properties.pluto IS NOT NULL) AS has_pluto`,
       [JSON.stringify(lots.map((l) => ({ ...l.lot, status: l.status, reason: l.reason })))],
     );
     const idByBbl = new Map(rows.map((r) => [r.bbl, r.id]));
@@ -305,4 +326,15 @@ export async function upsertLotsBulk(db: pg.Pool, lots: BulkLot[]): Promise<Bulk
     );
     return rows;
   });
+}
+
+/** PLUTO facts for many lots in one statement; a lot that already has them is left alone. */
+export async function storePlutoFacts(db: Queryable, facts: Array<{ bbl: string; pluto: PlutoLot }>): Promise<void> {
+  if (facts.length === 0) return;
+  await db.query(
+    `UPDATE properties p SET pluto = r.pluto, updated_at = now()
+       FROM jsonb_to_recordset($1::jsonb) AS r(bbl char(10), pluto jsonb)
+      WHERE p.bbl = r.bbl AND p.pluto IS NULL`,
+    [JSON.stringify(facts)],
+  );
 }

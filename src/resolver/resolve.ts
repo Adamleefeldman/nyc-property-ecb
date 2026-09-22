@@ -10,6 +10,7 @@ import { lookupBins } from './footprints.js';
 import { GeoSearchError, resolveAddress, type GeoSearchClient } from './geosearch.js';
 import { fetchPlutoLot } from './pluto.js';
 import {
+  findByBbl,
   findByInput,
   markPending,
   storeLotBuildings,
@@ -57,11 +58,23 @@ export async function registerByBbl(db: pg.Pool, deps: Pick<ResolverDeps, 'socra
 
   // A raw unit-lot BBL cannot be mapped to its building by any of our sources.
   const condoUnit = isCondoUnitLot(lot.lot);
+
+  // PLUTO carries the lot's official address, the only address a lot given as
+  // a BBL has. Fetched once per lot; an outage leaves it blank, not pending.
+  let pluto = (await findByBbl(db, lot.bbl))?.pluto ?? null;
+  if (pluto === null && !condoUnit) {
+    try {
+      pluto = await fetchPlutoLot(deps.socrata, lot.bbl);
+    } catch {
+      /* display only */
+    }
+  }
   const { property, created } = await upsertLot(db, lot, {
     input,
     source: 'bbl',
     status: condoUnit ? 'unresolved' : 'pending',
     reason: condoUnit ? CONDO_UNIT_LOT_REASON : null,
+    pluto,
   });
   return settleBins(db, deps.socrata, property, created ? 201 : 200);
 }
@@ -95,7 +108,9 @@ export async function registerByAddress(db: pg.Pool, deps: ResolverDeps, rawInpu
     return { property, httpStatus: created ? 201 : 200 };
   }
 
-  // A verified lot. PLUTO facts are nice to have; a miss or an outage is not a failure.
+  // A verified lot. GeoSearch also names one BIN, but Footprints lists every
+  // building on the lot, so step 3 asks it and stores the full set instead.
+  // PLUTO facts are nice to have; a miss or an outage is not a failure.
   const lot: Bbl = normalizeBbl(match.bbl);
   let pluto = null;
   try {

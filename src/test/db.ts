@@ -11,9 +11,9 @@
 import path from 'node:path';
 import pg from 'pg';
 
-const base = new URL(process.env.DATABASE_URL ?? 'postgres://app:app@localhost:5432/app');
+const base = new URL(process.env.DATABASE_URL ?? 'postgres://app:app@localhost:5433/app'); // 5433: the port docker compose publishes
 const suite = path.basename(process.argv[1] ?? 'suite').split('.')[0]!.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-export const TEST_DB_NAME = `app_test_${suite}`;
+const TEST_DB_NAME = `app_test_${suite}`;
 const testUrl = new URL(base.toString());
 testUrl.pathname = `/${TEST_DB_NAME}`;
 process.env.DATABASE_URL = testUrl.toString();

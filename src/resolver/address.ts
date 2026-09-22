@@ -23,7 +23,7 @@ export class InvalidAddressError extends Error {
 }
 
 const BOROUGH_WORDS: Record<string, number> = {
-  MANHATTAN: 1, MN: 1, 'NEW YORK': 1, NY: 1, NYC: 1,
+  MANHATTAN: 1, MN: 1, 'NEW YORK': 1,
   BRONX: 2, 'THE BRONX': 2, BX: 2,
   BROOKLYN: 3, BK: 3, BKLYN: 3,
   QUEENS: 4, QN: 4, QNS: 4,
@@ -34,12 +34,29 @@ export const BOROUGH_NAME: Record<number, string> = {
 };
 
 /** PAD spells street types out in full and writes ordinals as bare numbers. */
-const STREET_WORDS: Record<string, string> = {
+const STREET_TYPES: Record<string, string> = {
   AVE: 'AVENUE', AV: 'AVENUE', ST: 'STREET', STR: 'STREET', RD: 'ROAD', BLVD: 'BOULEVARD', BL: 'BOULEVARD',
   PL: 'PLACE', DR: 'DRIVE', PKWY: 'PARKWAY', PKY: 'PARKWAY', LN: 'LANE', CT: 'COURT', TER: 'TERRACE',
   TERR: 'TERRACE', HWY: 'HIGHWAY', EXPY: 'EXPRESSWAY', EXPWY: 'EXPRESSWAY', SQ: 'SQUARE', CIR: 'CIRCLE',
-  N: 'NORTH', S: 'SOUTH', E: 'EAST', W: 'WEST',
 };
+/** "ST NICHOLAS AVENUE", "DR MARTIN LUTHER KING JR BOULEVARD": Saint and Doctor unless they end the name. */
+const END_ONLY_TYPES = new Set(['ST', 'DR']);
+const DIRECTIONS: Record<string, string> = { N: 'NORTH', S: 'SOUTH', E: 'EAST', W: 'WEST' };
+
+/**
+ * Expand an abbreviation only in the position where it means that: a type
+ * anywhere (except ST/DR, which are Saint/Doctor unless last), a direction as
+ * a prefix ("W 4 STREET") or, on a longer name, a suffix ("PARK AVENUE SOUTH").
+ * Two-word "AVENUE N" is one of Brooklyn's lettered avenues and stays as is.
+ */
+function expandWord(w: string, i: number, n: number): string {
+  const last = i === n - 1;
+  const type = STREET_TYPES[w];
+  if (type && (last || !END_ONLY_TYPES.has(w))) return type;
+  const dir = DIRECTIONS[w];
+  if (dir && (i === 0 || (last && n > 2))) return dir;
+  return w;
+}
 
 const UNIT_RE = /\s+(?:APT|APARTMENT|UNIT|SUITE|STE|FL|FLOOR|RM|ROOM|PH|#)\.?\s*#?\s*([A-Z0-9-]+)$/;
 
@@ -96,26 +113,46 @@ export function normalizeStreet(raw: string): string {
     .replace(/(?<=[A-Z])-(?=[A-Z])/g, ' ') // FORTY-SECOND → FORTY SECOND (digit hyphens untouched)
     .split(/\s+/)
     .filter(Boolean);
-  return collapseNumberWords(tokens)
-    .map((w) => STREET_WORDS[w] ?? w)
-    .join(' ');
+  const words = collapseNumberWords(tokens);
+  return words.map((w, i) => expandWord(w, i, words.length)).join(' ');
 }
 
 export function boroughFromText(raw: string): number | null {
   return BOROUGH_WORDS[raw.trim().toUpperCase()] ?? null;
 }
 
+/**
+ * NYC ZIP prefixes are borough-specific: 100–102 Manhattan, 103 Staten Island,
+ * 104 Bronx, 112 Brooklyn, 111/113/114/116 Queens. 110xx and 115xx straddle
+ * the Nassau County line, so they say nothing.
+ */
+const ZIP_PREFIX_BOROUGH: Record<string, number> = {
+  100: 1, 101: 1, 102: 1, 103: 5, 104: 2, 111: 4, 112: 3, 113: 4, 114: 4, 116: 4,
+};
+function boroughFromZip(zip: string): number | null {
+  return ZIP_PREFIX_BOROUGH[zip.slice(0, 3)] ?? null;
+}
+
 export function normalizeAddress(input: string): NormalizedAddress {
   const text = input.replace(/\s+/g, ' ').trim();
   if (!text) throw new InvalidAddressError(input, 'empty');
 
-  // "350 5th Avenue, Manhattan, NY 10001" → first part is the street address,
-  // the rest may name a borough; state and zip are ignored.
+  // "350 5th Avenue, Manhattan, NY 10001": the first part is the street
+  // address; later parts may name the borough. "NY" is the state, never a
+  // borough. "New York" is Manhattan by postal convention but is also the
+  // state's name, so a ZIP outranks it ("Jackson Heights, New York 11372").
+  // Neighbourhood names are not understood; the ZIP is what places them.
   const parts = text.split(',').map((p) => p.trim()).filter(Boolean);
   let streetPart = (parts[0] ?? '').toUpperCase();
   let borough: number | null = null;
+  let zipBorough: number | null = null;
+  let sawNewYork = false;
   for (const p of parts.slice(1)) {
-    const b = boroughFromText(p.replace(/\s+\d{5}(-\d{4})?$/, '').replace(/\s+NY$/i, ''));
+    const zip = /(\d{5})(?:-\d{4})?$/.exec(p)?.[1];
+    if (zip && zipBorough === null) zipBorough = boroughFromZip(zip);
+    const word = p.replace(/\s*\d{5}(?:-\d{4})?$/, '').replace(/(?:^|\s)NY$/i, '').trim().toUpperCase();
+    if (word === 'NEW YORK') { sawNewYork = true; continue; }
+    const b = word ? boroughFromText(word) : null;
     if (b) { borough = b; break; }
   }
   // A trailing borough word with no comma: "350 5th Avenue Manhattan".
@@ -128,6 +165,7 @@ export function normalizeAddress(input: string): NormalizedAddress {
       }
     }
   }
+  if (borough === null) borough = zipBorough ?? (sawNewYork ? 1 : null);
 
   let unit: string | null = null;
   const unitMatch = UNIT_RE.exec(streetPart);

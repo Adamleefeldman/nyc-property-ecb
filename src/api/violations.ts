@@ -10,7 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { pool } from '../db/pool.js';
 import { getProperty } from '../resolver/properties.js';
 import { coverageFor } from './coverage.js';
-import { decodeCursor, encodeCursor } from './cursor.js';
+import { cursorDate, cursorText, cursorTimestamp, decodeCursor, encodeCursor } from './cursor.js';
 import { badRequest, notFound } from './errors.js';
 
 const idParams = {
@@ -132,7 +132,7 @@ export async function violationRoutes(app: FastifyInstance) {
       const where = ['bin = ANY($1)', ...filterSql(req.query)];
       if (req.query.cursor) {
         // Rows after the cursor row in (issue_date DESC NULLS LAST, number DESC) order.
-        const { d, n } = decodeCursor(req.query.cursor, ['d', 'n'] as const);
+        const { d, n } = decodeCursor(req.query.cursor, { d: cursorDate, n: cursorText });
         if (n === null) throw badRequest('invalid cursor');
         if (d === null) {
           params.push(n);
@@ -170,7 +170,7 @@ export async function violationRoutes(app: FastifyInstance) {
         where.push(`updated_at >= $${params.length}`);
       }
       if (req.query.cursor) {
-        const { t, n } = decodeCursor(req.query.cursor, ['t', 'n'] as const);
+        const { t, n } = decodeCursor(req.query.cursor, { t: cursorTimestamp, n: cursorText });
         if (t === null || n === null) throw badRequest('invalid cursor');
         params.push(t, n);
         where.push(`(updated_at, ecb_violation_number) < ($${params.length - 1}::timestamptz, $${params.length})`);

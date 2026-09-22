@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createSocrataClient } from '../socrata/fetch.js';
-import { ESB, MISSING_UNIT_LOT } from './fixtures/pluto.js';
-import { fetchPlutoLot } from './pluto.js';
+import { ESB, MISSING_UNIT_LOT, QUEENS } from './fixtures/pluto.js';
+import { fetchPlutoLot, fetchPlutoLots, plutoAddress } from './pluto.js';
 
 function clientReturning(rows: unknown) {
   const urls: string[] = [];
@@ -24,5 +24,36 @@ describe('fetchPlutoLot', () => {
   it('returns null for a lot PLUTO does not have (condo unit lots)', async () => {
     const { client } = clientReturning(MISSING_UNIT_LOT);
     assert.equal(await fetchPlutoLot(client, '1011141001'), null);
+  });
+});
+
+describe('fetchPlutoLots', () => {
+  it('asks for every lot in one call and keys the answer by canonical BBL', async () => {
+    const { client, urls } = clientReturning([...ESB, ...QUEENS]);
+    const out = await fetchPlutoLots(client, ['1008350041', '4014700059', '1011141001']);
+    assert.equal(client.stats().calls, 1);
+    assert.equal(
+      new URL(urls[0]!).searchParams.get('$where'),
+      "bbl in ('1008350041.00000000','4014700059.00000000','1011141001.00000000')",
+    );
+    assert.deepEqual([...out.keys()].sort(), ['1008350041', '4014700059']); // the unit lot is simply absent
+    assert.equal(out.get('4014700059')?.address, '37-11 82 STREET');
+  });
+  it('makes no call for an empty list', async () => {
+    const { client } = clientReturning([]);
+    assert.equal((await fetchPlutoLots(client, [])).size, 0);
+    assert.equal(client.stats().calls, 0);
+  });
+});
+
+describe('plutoAddress', () => {
+  it('writes the lot address in the normalized-input form', () => {
+    assert.equal(plutoAddress(ESB[0]!, 1), '338 5 AVENUE, MANHATTAN');
+    assert.equal(plutoAddress(QUEENS[0]!, 4), '37-11 82 STREET, QUEENS');
+    assert.equal(plutoAddress({ address: '  BROOKLYN   QUEENS EXPRESSWAY ' }, 3), 'BROOKLYN QUEENS EXPRESSWAY, BROOKLYN');
+  });
+  it('is null when PLUTO has no row or no address', () => {
+    assert.equal(plutoAddress(null, 1), null);
+    assert.equal(plutoAddress({ address: '' }, 1), null);
   });
 });

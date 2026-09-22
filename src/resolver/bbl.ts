@@ -57,10 +57,6 @@ export function normalizeBbl(input: string): Bbl {
   return { bbl: `${borough}${block}${lot}`, borough: boroughNum, block, lot };
 }
 
-export function boroughName(borough: number): string {
-  return BOROUGH_NAMES[borough] ?? String(borough);
-}
-
 /**
  * Condo apartments carry their own paper lot in 1001–6999; the building that
  * violations are filed against sits on a billing lot 7501+. None of our sources

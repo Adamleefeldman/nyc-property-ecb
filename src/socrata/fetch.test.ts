@@ -43,8 +43,6 @@ describe('createSocrataClient', () => {
     await client.get('x', {});
     await assert.rejects(client.get('x', {}));
     assert.deepEqual(client.stats(), { calls: 2 });
-    client.resetStats();
-    assert.deepEqual(client.stats(), { calls: 0 });
   });
 
   it('marks 429 and 5xx retryable, other 4xx not', async () => {

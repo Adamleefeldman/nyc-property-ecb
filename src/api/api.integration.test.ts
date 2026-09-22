@@ -9,6 +9,7 @@ import { after, beforeEach, describe, it } from 'node:test';
 import { CPW15_BILLING, ESB, VACANT } from '../resolver/fixtures/footprints.js';
 import { fakeCity } from '../test/fakes.js';
 import { ECB_ROWS } from '../pipeline/fixtures/ecb-rows.js';
+import { QUEENS as PLUTO_QUEENS } from '../resolver/fixtures/pluto.js';
 
 const db = await getTestDb();
 const { buildApp } = await import('./app.js');
@@ -99,6 +100,8 @@ describe('API (integration)', { skip: db ? false : SKIP_REASON }, () => {
     assert.equal(new Set(seen).size, 17);
     assert.equal(seen.filter((n) => n.startsWith('NEW')).length, 0);
     assert.equal((await get(`/properties/${cpw.id}/ecb-violations?cursor=zzz`)).status, 400);
+    const forged = Buffer.from(JSON.stringify({ d: 'garbage', n: 'x' })).toString('base64url');
+    assert.equal((await get(`/properties/${cpw.id}/ecb-violations?cursor=${forged}`)).status, 400); // not a 500 from the date cast
   });
 
   it('cross-property updatedSince returns every row written in one transaction, paged, with property ids', async () => {
@@ -119,20 +122,27 @@ describe('API (integration)', { skip: db ? false : SKIP_REASON }, () => {
     assert.equal(new Set(seen).size, 27);
     assert.equal((await get('/ecb-violations?updatedSince=2999-01-01T00:00:00Z')).body.items.length, 0);
     assert.equal((await get('/ecb-violations?updatedSince=yesterday')).status, 400);
+    const forged = Buffer.from(JSON.stringify({ t: 'garbage', n: 'x' })).toString('base64url');
+    assert.equal((await get(`/ecb-violations?cursor=${forged}`)).status, 400);
   });
 
   it('GET /properties?unpaid=true lists who owes, with totals', async () => {
-    const city = fakeCity({ ecbRows: ECB_ROWS, footprintRows });
+    const city = fakeCity({ ecbRows: ECB_ROWS, footprintRows, plutoRows: PLUTO_QUEENS });
     await registerByBbl(pool, city, '1011147503'); // $2,530 unpaid
     await registerByBbl(pool, city, '4014700059'); // nothing unpaid
     await runIngestion(pool, city.socrata, opts);
     const all = await get('/properties');
     assert.equal(all.body.items.length, 2);
+    const queens = all.body.items.find((i: { bbl: string }) => i.bbl === '4014700059');
+    assert.deepEqual([queens.normalizedAddress, queens.addressSource], ['37-11 82 STREET, QUEENS', 'pluto']); // by BBL: PLUTO's address
+    assert.equal(queens.binCount, 1);
     const unpaid = await get('/properties?unpaid=true');
     assert.equal(unpaid.body.items.length, 1);
     assert.equal(unpaid.body.items[0].bbl, '1011147503');
     assert.equal(unpaid.body.items[0].unpaidTotal, 2530);
     assert.equal(unpaid.body.items[0].unpaidCount, 1);
+    const forged = Buffer.from(JSON.stringify({ b: '1', i: 'not-a-uuid' })).toString('base64url');
+    assert.equal((await get(`/properties?cursor=${forged}`)).status, 400);
   });
 
   it('error shape is one object everywhere: 404 unknown property, 400 bad body, 400 bad id', async () => {

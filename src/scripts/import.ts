@@ -15,7 +15,7 @@ if (!file) {
   process.exit(2);
 }
 
-export function parseBblFile(text: string): string[] {
+function parseBblFile(text: string): string[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   if (lines.length === 0) return [];
   const header = lines[0]!.split(',').map((h) => h.trim().toLowerCase());
@@ -26,7 +26,7 @@ export function parseBblFile(text: string): string[] {
 
 await migrate(pool);
 const bbls = parseBblFile(await readFile(file, 'utf8'));
-const totals = { received: 0, created: 0, existing: 0, failed: 0, resolved: 0, not_applicable: 0, unresolved: 0, pending: 0, footprintsCalls: 0 };
+const totals = { received: 0, created: 0, existing: 0, failed: 0, resolved: 0, not_applicable: 0, unresolved: 0, pending: 0, plutoCalls: 0, footprintsCalls: 0 };
 const started = Date.now();
 for (const part of chunk(bbls, 1000)) {
   const r = await registerBulkByBbl(pool, socrata, part, { footprintsBatchSize: config.footprintsBatchSize });
@@ -34,15 +34,16 @@ for (const part of chunk(bbls, 1000)) {
   totals.created += r.created;
   totals.existing += r.existing;
   totals.failed += r.failed;
+  totals.plutoCalls += r.plutoCalls;
   totals.footprintsCalls += r.footprintsCalls;
   for (const k of ['resolved', 'not_applicable', 'unresolved', 'pending'] as const) totals[k] += r.byStatus[k];
   for (const f of r.failures) console.error(`  line ${f.index + 1}: ${f.error}`);
-  console.log(`  chunk: ${r.received} received, ${r.created} created, ${r.existing} existing, ${r.failed} failed, ${r.footprintsCalls} Footprints calls`);
+  console.log(`  chunk: ${r.received} received, ${r.created} created, ${r.existing} existing, ${r.failed} failed, ${r.plutoCalls} PLUTO + ${r.footprintsCalls} Footprints calls`);
 }
 const secs = ((Date.now() - started) / 1000).toFixed(1);
 console.log(
   `import ${file}: ${totals.received} BBLs in ${secs}s → ${totals.created} created, ${totals.existing} existing, ${totals.failed} invalid; ` +
     `${totals.resolved} resolved, ${totals.not_applicable} not_applicable, ${totals.unresolved} unresolved, ${totals.pending} pending; ` +
-    `${totals.footprintsCalls} Footprints calls`,
+    `${totals.plutoCalls} PLUTO + ${totals.footprintsCalls} Footprints calls`,
 );
 await pool.end();

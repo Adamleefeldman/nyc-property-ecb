@@ -3,12 +3,13 @@ name: nyc-property-ecb
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
       POSTGRES_DB: app
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5433:5432" # local SQL clients only; the api and scheduler use the compose network
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -19,6 +20,7 @@ services:
 
   api:
     build: .
+    restart: unless-stopped
     env_file:
       - path: .env
         required: false
@@ -34,6 +36,7 @@ services:
 
   scheduler:
     build: .
+    restart: unless-stopped
     env_file:
       - path: .env
         required: false

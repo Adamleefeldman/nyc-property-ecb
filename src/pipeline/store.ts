@@ -144,7 +144,6 @@ export interface BatchRow {
   batch_no: number;
   bins: string[];
   property_ids: string[];
-  attempts: number;
 }
 
 export async function insertBatches(
@@ -164,7 +163,7 @@ export async function insertBatches(
 
 export async function listPendingBatches(db: Queryable, runId: number): Promise<BatchRow[]> {
   const { rows } = await db.query<BatchRow>(
-    `SELECT batch_no, bins, property_ids, attempts FROM ingestion_batches
+    `SELECT batch_no, bins, property_ids FROM ingestion_batches
       WHERE run_id = $1 AND status = 'pending' ORDER BY batch_no`,
     [runId],
   );
